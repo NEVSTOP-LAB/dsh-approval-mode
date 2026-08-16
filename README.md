@@ -1,6 +1,6 @@
 # DSH-Approval-Mode
 
-DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspace Write / Full Access）旁边加一个「审批模式」按钮，可以手动切换。
+DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspace Write / Full Access）旁边加一个「审批模式」按钮，权限可以保持 **Workspace Write**，审批模式选「绕过审批」——工具调用自动放行，但文件操作仍被沙箱限制在工作区内，比切到 Full Access 更安全、更方便。
 
 > [!IMPORTANT]
 > 「绕过审批」会**自动批准所有工具调用**，包括文件修改、外部命令等敏感操作，全程没有确认提示。
@@ -31,9 +31,6 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 
 > [!NOTE]
 > `--profile web` 是默认 profile。桌面版（[DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
-
-> [!TIP]
-> 想少点确认又不想放开全部权限：权限保持 **Workspace Write**，审批模式选「绕过审批」——工具调用自动放行，但文件操作仍被沙箱限制在工作区内，比切到 Full Access 更安全、更方便。
 
 建议锁定提交，避免后续更新改变实际内容：
 

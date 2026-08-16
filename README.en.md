@@ -1,6 +1,6 @@
 # DSH-Approval-Mode
 
-An approval mode plugin for DSH. Adds an "approval mode" button next to the permission selector (Read Only / Workspace Write / Full Access) in the DSH window.
+An approval mode plugin for DSH. Adds an "approval mode" button next to the permission selector (Read Only / Workspace Write / Full Access) in the DSH window. Keep the permission at **Workspace Write** and pick "Bypass approval" — tool calls are auto-approved, while file operations stay sandboxed to the workspace, safer and more convenient than Full Access.
 
 > [!IMPORTANT]
 > "Bypass approval" **auto-approves every tool call**, including file modifications and external commands. There is no confirmation prompt at all.
@@ -31,9 +31,6 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 
 > [!NOTE]
 > `--profile web` is the default profile. Use `--profile desktop` for [DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop); replace `web` with the name of any other profile.
-
-> [!TIP]
-> Want fewer confirmations without opening up the whole machine? Keep the permission at **Workspace Write** and pick "Bypass approval" — tool calls are auto-approved, but file operations stay sandboxed to the workspace. Safer and more convenient than switching to Full Access.
 
 Pinning a commit is recommended so later pushes cannot silently change what runs:
 
