@@ -30,7 +30,10 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 ```
 
 > [!NOTE]
-> `--profile web` 是默认 profile。桌面版（DSH Desktop）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
+> `--profile web` 是默认 profile。桌面版（[DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
+
+> [!TIP]
+> 想少点确认又不想放开全部权限：权限保持 **Workspace Write**，审批模式选「绕过审批」——工具调用自动放行，但文件操作仍被沙箱限制在工作区内，比切到 Full Access 更安全、更方便。
 
 建议锁定提交，避免后续更新改变实际内容：
 
