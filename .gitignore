@@ -3,3 +3,4 @@ dist/
 *.tgz
 *.log
 .DS_Store
+.tmp-npm-cache/
