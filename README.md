@@ -7,6 +7,8 @@ DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspac
 > 只在完全信任当前任务时使用，用完记得切回「默认审批」。
 > 当会话权限为 Full Access 时，DSH 本身不会发起审批请求，此模式不生效。
 
+<img width="998" height="169" alt="image" src="https://github.com/user-attachments/assets/76763839-e8c1-4dcf-9a4f-00d94b5110b3" />
+
 ## 功能
 
 - 按钮在输入框工具栏、权限选择旁边，样式和权限控件一致
