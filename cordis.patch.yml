@@ -1,0 +1,15 @@
+# dsh-approval-mode bundle patch
+#
+# This file is the `dsh.bundle.patch` layer of the package: when the plugin is
+# installed through the official DSH CLI —
+#
+#   dsh plugin --profile <name> add dsh-approval-mode
+#   # or from a git repo:
+#   dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode
+#
+# — the CLI appends this bundle to the profile stack and this patch inserts
+# the plugin row. The row's module name is the package name, resolved through
+# the profile's node_modules.
+- insert:
+    - id: dsh-approval-mode
+      name: 'dsh-approval-mode'

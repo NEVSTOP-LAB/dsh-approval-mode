@@ -1,0 +1,52 @@
+{
+  "name": "dsh-approval-mode",
+  "version": "0.1.0",
+  "description": "DSH-Approval-Mode: approval-mode control for DeepSeek Harness — 默认审批 (ask) or 绕过审批 (auto-approve every tool call), next to the permission selector.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "approval",
+    "permissions",
+    "agent"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "check": "node --check index.js && node --check lib/client.js",
+    "pack": "npm pack --pack-destination ./dist"
+  }
+}
