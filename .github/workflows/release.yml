@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)" >&2
+            exit 1
+          fi
+      - name: Syntax check
+        run: npm run check
+      - name: Pack tarball
+        run: npm run pack
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: dsh-approval-mode ${{ github.ref_name }}
+          body: |
+            DSH-Approval-Mode ${{ github.ref_name }}
+
+            ## 安装
+
+            ```sh
+            # 从 tarball（本 Release 附件）
+            dsh plugin --profile <name> add ./dsh-approval-mode-${{ github.ref_name }}.tgz
+
+            # 或从仓库安装（锁定 tag 以固定内容）
+            dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode#${{ github.sha }}
+            ```
+
+            详见 [README](https://github.com/NEVSTOP-LAB/dsh-approval-mode#readme)。
+          files: dist/*.tgz

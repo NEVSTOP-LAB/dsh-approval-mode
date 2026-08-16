@@ -28,25 +28,33 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 │  ├─ approval/request 应答器（prepend: true，水瀑布最前端）     │
 │  │    bypass → 直接返回 "allowed-once"                        │
 │  │    ask    → next()（走 DSH 原有审批流程）                   │
+│  ├─ webServer 控制路由 GET/POST /approval-mode（回环校验）     │
 │  └─ settings/updated 监听 → 通知所有在线代理                   │
 └──────────────────────────────────────────────────────────────┘
-        settings RPC（settings.describe / settings.mutate）
+        same-origin fetch（GET/POST /approval-mode）
 ┌────────────────────────── 浏览器（Client）────────────────────┐
 │  lib/client.js（__ModuleLoader__ bundle）                      │
 │  ├─ 注册 conversation.input.left 座位（权限控件旁边）          │
 │  ├─ 渲染「按钮 + 弹出菜单」控件（复刻 PermissionSelect 视觉）   │
-│  └─ 读写 Host settings namespace（connection.api.settings.*） │
+│  └─ 读写 Host 控制路由（fetch，同源）                          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 为什么用 settings 而非自定义 RPC
+### 2.1 为什么用 webServer 路由而非 settings RPC
 
 - 动态插件版曾用 `harness.handle` 包私有 RPC（`approvalMode/get`、`approvalMode/set`）；
   静态 bundle 中该机制不可用（`host.call` 是动态插件 builtin）。
+- **settings RPC 有硬编码暴露白名单**：`dsh-host-apiproxy` 的
+  `exposedNamespaces()` = `modelProviderNamespaces()` + `WEB_SETTINGS_NAMESPACES`
+  + `PRODUCT_SETTINGS_NAMESPACES`（固定列表，注释明确"第三方注册的 namespace
+  默认不对配置客户端可见"），白名单外返回 `settings-not-exposed`，且**无法扩展**。
+  实测：Host 端 `ctx.settings.get` 可读（注册成功），但 `api.settings.describe`
+  不返回该 namespace。
 - typert Remote 的 client 端 `$mount` 需要编译器生成的严格描述符，手写成本高。
-- **settings 服务是官方公开机制**：Host 端 `ctx.settings.register`，client 端通过
-  已有 API 通道（`settings.describe` / `settings.mutate`，UNARY_ROUTES 内置）
-  读写——与内置设置界面（`dsh-client-ui-settings`）同一条通道，且天然持久化。
+- **最终方案**：模式仍存 settings 服务（Host 内部读写，不受白名单影响），
+  client 通过 Host 在公开 `webServer` 服务上注册的**控制路由**
+  `GET/POST /approval-mode`（同源 fetch）读写。路由自带回环 Host 校验
+  （防御 `0.0.0.0` 部署）。
 
 ## 3. 关键机制
 
@@ -180,13 +188,20 @@ dsh-approval-mode/
   {outcome:"allowed-once"}`，**无 `approval/requested` 帧**（提示未广播）。
 - ask 模式回归：`approval/requested` 正常广播（原生流程）。
 
-### 5.2 bundle 版（静态）
+### 5.2 bundle 版（静态，验证通过）
 
 - `dsh plugin --profile <name> add ./dsh-approval-mode-0.1.0.tgz` 安装成功，
   profile `dsh.profile.bundles` 正确追加。
 - `dsh --profile <name> --dump-config` 出现 `# == dsh-approval-mode` 层。
-- 测试实例启动：插件行 `include:dsh-approval-mode` fiberPhase `active`。
-- settings.describe 应返回 `approval-mode` namespace（开发中待最终确认）。
+- 测试实例启动：插件行 `include:dsh-approval-mode` fiberPhase `active`；
+  apply 日志确认 settings 注册、应答器（prepend）、路由、监听器全部就位。
+- 控制路由实测：
+  - `GET /approval-mode` → `{"ok":true,"mode":"ask","defaultMode":"ask"}`
+  - `POST {"mode":"bypass"}` → `{"ok":true,"mode":"bypass","changed":true}`；
+    实例日志出现 `settings/updated: mode = bypass`（代理通知就位）
+  - 无效 mode → HTTP 400
+  - **持久化**：重启实例后 `GET` 仍返回 `bypass`（settings.yaml 落盘）
+- Client bundle：`GET /plugins/dsh-approval-mode/client.js` → 200（进 web graph）。
 
 ## 6. 已知边界与后续
 
