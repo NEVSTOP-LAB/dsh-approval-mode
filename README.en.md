@@ -7,6 +7,8 @@ An approval mode plugin for DSH. Adds an "approval mode" button next to the perm
 > Use it only when you fully trust the current task, and switch back to "default approval" when done.
 > When the session permission is Full Access, DSH never issues approval requests, so this mode has no effect.
 
+<img width="998" height="169" alt="image" src="https://github.com/user-attachments/assets/76763839-e8c1-4dcf-9a4f-00d94b5110b3" />
+
 ## Features
 
 - The button sits in the composer toolbar next to the permission selector, styled like the permission control
