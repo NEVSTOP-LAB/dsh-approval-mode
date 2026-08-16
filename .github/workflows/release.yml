@@ -32,9 +32,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: dsh-approval-mode ${{ github.ref_name }}
+          name: ${{ github.ref_name }} dsh-approval-mode
           body: |
-            DSH-Approval-Mode ${{ github.ref_name }}
+            ${{ github.ref_name }} DSH-Approval-Mode
 
             ## 安装
 
