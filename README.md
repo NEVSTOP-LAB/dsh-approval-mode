@@ -26,25 +26,28 @@ DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspac
 从 GitHub 仓库安装：
 
 ```sh
-dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode
+dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 ```
+
+> [!NOTE]
+> `--profile web` 是默认 profile。桌面版（DSH Desktop）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
 
 建议锁定提交，避免后续更新改变实际内容：
 
 ```sh
-dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
+dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 ```
 
 也可以从 [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) 下载 tarball 安装：
 
 ```sh
-dsh plugin --profile <name> add ./dsh-approval-mode-0.1.0.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.0.tgz
 ```
 
 安装后确认组合层里出现该插件：
 
 ```sh
-dsh --profile <name> --dump-config
+dsh --profile web --dump-config
 ```
 
 启动后，输入框工具栏权限下拉框旁边会出现「默认审批」按钮。
@@ -52,7 +55,7 @@ dsh --profile <name> --dump-config
 卸载：
 
 ```sh
-dsh plugin --profile <name> remove dsh-approval-mode
+dsh plugin --profile web remove dsh-approval-mode
 ```
 
 ## License

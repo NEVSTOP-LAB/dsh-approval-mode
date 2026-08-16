@@ -40,11 +40,12 @@ jobs:
 
             ```sh
             # 从 tarball（本 Release 附件）
-            dsh plugin --profile <name> add ./dsh-approval-mode-${{ github.ref_name }}.tgz
+            dsh plugin --profile web add ./dsh-approval-mode-${{ github.ref_name }}.tgz
 
-            # 或从仓库安装（锁定 tag 以固定内容）
-            dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode#${{ github.sha }}
+            # 或从仓库安装（锁定提交以固定内容）
+            dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#${{ github.sha }}
             ```
 
+            `--profile web` 是默认 profile；桌面版用 `--profile desktop`。
             详见 [README](https://github.com/NEVSTOP-LAB/dsh-approval-mode#readme)。
           files: dist/*.tgz

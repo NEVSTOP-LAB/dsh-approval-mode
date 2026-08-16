@@ -26,25 +26,28 @@ Requires the [dsh CLI](https://github.com/deepseek-ai/deepseek-harness) (0.1.0-r
 Install from the GitHub repository:
 
 ```sh
-dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode
+dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 ```
+
+> [!NOTE]
+> `--profile web` is the default profile. Use `--profile desktop` for DSH Desktop; replace `web` with the name of any other profile.
 
 Pinning a commit is recommended so later pushes cannot silently change what runs:
 
 ```sh
-dsh plugin --profile <name> add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
+dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 ```
 
 Or download the tarball from [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) and install it:
 
 ```sh
-dsh plugin --profile <name> add ./dsh-approval-mode-0.1.0.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.0.tgz
 ```
 
 Verify the composed config contains the plugin layer:
 
 ```sh
-dsh --profile <name> --dump-config
+dsh --profile web --dump-config
 ```
 
 After boot, the "默认审批" button appears next to the permission selector in the composer toolbar.
@@ -52,7 +55,7 @@ After boot, the "默认审批" button appears next to the permission selector in
 Uninstall:
 
 ```sh
-dsh plugin --profile <name> remove dsh-approval-mode
+dsh plugin --profile web remove dsh-approval-mode
 ```
 
 ## License
