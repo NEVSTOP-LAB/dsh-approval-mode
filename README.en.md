@@ -16,6 +16,7 @@ An approval mode plugin for DSH. Adds an "approval mode" button next to the perm
 - **Bypass approval**: every tool call is auto-approved, no clicks needed
 - Changes apply immediately and persist across restarts
 - The button turns orange in bypass mode
+- With Full Access permission, the button is greyed out and shows "绕过审批": DSH never issues approval requests, so the mode cannot be switched
 - Switching mode notifies the agents in live sessions
 
 ## Install

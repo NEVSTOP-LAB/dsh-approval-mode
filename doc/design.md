@@ -123,6 +123,12 @@ ctx.on("approval/request", async (req, next) => {
 **差异点（有意）**：绕过审批时 trigger 与菜单项使用警告色
 `--dsw-alias-state-warn-primary`（安全提示），图标切换为闪电；默认审批为盾牌。
 
+**Full Access 联动**：组件通过 standard props 的 `useProjection("permissions")`
+订阅会话权限投影（响应式，切换权限即时更新）。当 `currentValue ===
+"danger-full-access"` 时（DSH 策略 `never`，不会发起审批请求，绕过无意义）：
+按钮**置灰禁用**（disabled 样式 `--dsw-alias-label-dimmed`），并显示「绕过审批」
+（与实际"全部放行"行为一致），title 说明原因；点击不产生任何写入。
+
 client bundle 无法 import primitives 的 `Menu`/图标组件，菜单与内联 SVG 图标
 （shield / bolt / check / chevron）均为自绘；样式通过 `document.createElement("style")`
 注入，随插件 fiber 清理。
