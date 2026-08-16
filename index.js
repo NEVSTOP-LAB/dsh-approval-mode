@@ -161,6 +161,12 @@ export function apply(ctx) {
     if (ns !== NS) return;
     const mode = modeOf(next);
     console.log(`[dsh-approval-mode] settings/updated: mode = ${mode}`);
+    // 通知文案跟随 DSH 语言（locale settings preference；缺省回退中文）
+    const locale = ctx.settings.get("locale");
+    const en = locale && locale.preference === "en";
+    const text = en
+      ? `The approval mode was switched to "${mode === "bypass" ? "bypass approval (every tool call is auto-approved)" : "default approval (tool calls require a click to approve)"}".`
+      : `审批模式已由用户切换为「${mode === "bypass" ? "绕过审批（所有工具调用自动批准）" : "默认审批（工具调用需要点击审批）"}」。`;
     const agents = ctx.get("agents");
     if (!agents || typeof agents.list !== "function") return;
     for (const agent of agents.list()) {
@@ -168,10 +174,7 @@ export function apply(ctx) {
         if (agent && typeof agent.inject === "function") {
           agent.inject({
             role: "user",
-            content: [{
-              type: "text",
-              text: `审批模式已由用户切换为「${mode === "bypass" ? "绕过审批（所有工具调用自动批准）" : "默认审批（工具调用需要点击审批）"}」。`
-            }],
+            content: [{ type: "text", text }],
             source: { kind: "plugin", plugin: "approval-mode" }
           });
         }
