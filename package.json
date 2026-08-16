@@ -45,7 +45,7 @@
     "react": "^18.2.0"
   },
   "scripts": {
-    "check": "node --check index.js && node --check lib/client.js",
-    "pack": "npm pack --pack-destination ./dist"
+    "check": "node --check index.js && node --check lib/client.js && node --check scripts/dshClient.js && node --check scripts/listen-only.mjs",
+    "pack": "node scripts/pack.mjs"
   }
 }
