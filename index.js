@@ -12,15 +12,16 @@
  *     so it persists across restarts.
  *   - The client half reads/writes the mode through a small HTTP route
  *     (`GET/POST /approval-mode`) registered on the public webServer service.
- *     The settings RPC surface is NOT used: its namespace allowlist
- *     (WEB_SETTINGS_NAMESPACES in dsh-host-apiproxy) is hard-coded and
- *     third-party namespaces are refused with `settings-not-exposed`.
+ *     The settings RPC surface is deliberately NOT used: a compose-time
+ *     control route keeps the mode read/write self-contained and avoids
+ *     coupling to the settings RPC's write semantics.
  *   - On mode change, every live agent is notified via an injected message.
  *
  * The client half (lib/client.js) renders the mode picker next to the
  * permission selector; see doc/design.md for the full design.
  */
 import z from "@deepseek-ai/schemastery";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 /** Stable Cordis plugin name (also the bundle row id). */
 export const name = "dsh-approval-mode";
@@ -172,11 +173,13 @@ export function apply(ctx) {
     for (const agent of agents.list()) {
       try {
         if (agent && typeof agent.inject === "function") {
-          agent.inject({
-            role: "user",
+          // Use createUserMessage so the message carries a stable identity (id)
+          // and is frozen first — DSH 0.1.1-rc.2+ validates message identity at
+          // the session seed/load boundary and a raw object would fail resume.
+          agent.inject(createUserMessage({
             content: [{ type: "text", text }],
             source: { kind: "plugin", plugin: "approval-mode" }
-          });
+          }));
         }
       } catch (err) {
         console.error("[dsh-approval-mode] agent notify error:", err);
