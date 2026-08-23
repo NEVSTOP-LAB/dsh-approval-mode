@@ -41,7 +41,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 Or download the tarball from [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) and install it:
 
 ```sh
-dsh plugin --profile web add ./dsh-approval-mode-0.1.0.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.1-rc.2.tgz
 ```
 
 Verify the composed config contains the plugin layer:
