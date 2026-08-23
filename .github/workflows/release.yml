@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: 22
       - name: Verify version matches tag
+        id: version
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -25,6 +26,7 @@ jobs:
             echo "package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)" >&2
             exit 1
           fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
       - name: Syntax check
         run: npm run check
       - name: Pack tarball
@@ -40,7 +42,7 @@ jobs:
 
             ```sh
             # 从 tarball（本 Release 附件）
-            dsh plugin --profile web add ./dsh-approval-mode-${{ github.ref_name }}.tgz
+            dsh plugin --profile web add ./dsh-approval-mode-${{ steps.version.outputs.version }}.tgz
 
             # 或从仓库安装（锁定提交以固定内容）
             dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#${{ github.sha }}
