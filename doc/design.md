@@ -44,12 +44,13 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 
 - 动态插件版曾用 `harness.handle` 包私有 RPC（`approvalMode/get`、`approvalMode/set`）；
   静态 bundle 中该机制不可用（`host.call` 是动态插件 builtin）。
-- **settings RPC 有硬编码暴露白名单**：`dsh-host-apiproxy` 的
-  `exposedNamespaces()` = `modelProviderNamespaces()` + `WEB_SETTINGS_NAMESPACES`
-  + `PRODUCT_SETTINGS_NAMESPACES`（固定列表，注释明确"第三方注册的 namespace
-  默认不对配置客户端可见"），白名单外返回 `settings-not-exposed`，且**无法扩展**。
-  实测：Host 端 `ctx.settings.get` 可读（注册成功），但 `api.settings.describe`
-  不返回该 namespace。
+- **settings RPC 语义随 DSH 演进**：早期 `dsh-host-apiproxy` 有硬编码暴露白名单
+  （`exposedNamespaces()` = `modelProviderNamespaces()` + `WEB_SETTINGS_NAMESPACES`
+  + `PRODUCT_SETTINGS_NAMESPACES`，白名单外返回 `settings-not-exposed`）；
+  在 0.1.1-rc.2 中该白名单已移除，`settings.describe()` 返回所有已注册命名空间，
+  写路径仅按命名空间是否已注册来门控（未注册返回 `settings-rejected`）。
+  插件不再依赖这些内部符号，改走自包含的控制路由，避免与 settings RPC 的
+  写入语义耦合。
 - typert Remote 的 client 端 `$mount` 需要编译器生成的严格描述符，手写成本高。
 - **最终方案**：模式仍存 settings 服务（Host 内部读写，不受白名单影响），
   client 通过 Host 在公开 `webServer` 服务上注册的**控制路由**
