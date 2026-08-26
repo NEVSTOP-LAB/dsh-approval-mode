@@ -146,10 +146,12 @@ dsh-approval-mode/
 └── lib/client.js     # Client half（window.__ModuleLoader__.load({id, factory})）
 ```
 
-- **依赖声明**：`@deepseek-ai/schemastery` 放 `dependencies`（Host 代码真实
-  import，必须出现在 profile 的 pnpm 树）；`@deepseek-ai/cordis`、
-  `@deepseek-ai/dsh-settings`、`react` 放 `peerDependencies`（由 DSH 共享依赖层
-  `$DSH_HOME/profiles/node_modules` 解析，与 better-sidebar 先例一致）。
+- **依赖声明**：`@deepseek-ai/dsh-llm`、`@deepseek-ai/schemastery` 均为 DSH 宿主
+  共享包（宿主 `dsh-plugin-desktop` 自身携带），放 `peerDependencies`，由 DSH
+  共享依赖层 `$DSH_HOME/profiles/node_modules` 解析，避免在插件的 `node_modules`
+  里装独立拷贝而遮蔽宿主版本（本地开发用 `devDependencies` 补齐这两项）；
+  `@deepseek-ai/cordis`、`@deepseek-ai/dsh-settings`、`react` 同样放
+  `peerDependencies`（与 better-sidebar 先例一致）。
 - **Client manifest**：`dsh.client = { inject: ["@deepseek-ai/dsh-client-runtime",
   "@deepseek-ai/dsh-client-connection"], platform: "web" }`——client-modules
   扫描 host loader entries 中声明 `dsh.client` 的包，将其 `./client` 导出作为
