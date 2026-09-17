@@ -17,8 +17,12 @@
  *     coupling to the settings RPC's write semantics.
  *   - On mode change, every live agent is notified via an injected message.
  *
- * The client half (lib/client.js) renders the mode picker next to the
- * permission selector; see doc/design.md for the full design.
+ * The client half (lib/client.js) renders two surfaces over this one setting:
+ * the mode picker next to the permission selector, and this plugin's card on
+ * the settings page (设置 → 插件 → 插件配置), which is where the mode a session
+ * opens with is configured. Registering the namespace is what makes that card
+ * eligible: the plugins tab pairs every SERVED settings namespace with the
+ * browser half that claims its key. See doc/design.md for the full design.
  */
 import z from "@deepseek-ai/schemastery";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
@@ -84,6 +88,9 @@ function readBody(req, maxBytes = 65536) {
 
 export function apply(ctx) {
   ctx.settings.register(NS, MODE_SCHEMA, { applies: "live" });
+  // One line at mount: it is what tells a user (and a bug report) that the
+  // plugin composed on their DSH build at all, and which mode is in force.
+  console.log(`[dsh-approval-mode] loaded: mode = ${modeOf(ctx.settings.get(NS))}`);
 
   /**
    * Front-of-chain approval answerer (prepend). DSH's GUI answerer

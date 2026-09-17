@@ -18,10 +18,20 @@ An approval mode plugin for DSH. Adds an "approval mode" button next to the perm
 - The button turns orange in bypass mode
 - With Full Access permission, the button is greyed out and shows "绕过审批": DSH never issues approval requests, so the mode cannot be switched
 - Switching mode notifies the agents in live sessions
+- Settings → Plugins → **Plugin configuration** carries this plugin's card, where the default approval mode for opened sessions is set
+
+## Configuration
+
+The approval mode has **two** entry points and they write the same setting (global, applied immediately, persisted to `settings.yaml`):
+
+| Entry point | Where | For |
+| --- | --- | --- |
+| Approval-mode button | Composer toolbar, next to the permission selector | Switching the current session on the fly |
+| Configuration card | Settings → Plugins → Plugin configuration | Setting the default mode sessions open with |
 
 ## Install
 
-Requires the [dsh CLI](https://github.com/deepseek-ai/deepseek-harness) (0.1.0-rc.6 or newer).
+Requires the [dsh CLI](https://github.com/deepseek-ai/deepseek-harness) (lower bound `0.1.1-rc.2`, verified on `0.1.5-rc.2` — see the version note below).
 
 Install from the GitHub repository:
 
@@ -32,6 +42,18 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > [!NOTE]
 > `--profile web` is the default profile. Use `--profile desktop` for [DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop); replace `web` with the name of any other profile.
 
+> [!NOTE]
+> **Version requirement and compatibility**: verified on DSH `0.1.5-rc.2` (DSH Desktop 2.0.11). The declared lower
+> bound is `0.1.1-rc.2` — `createUserMessage` has supplied the stable message identity this plugin needs only since
+> that release, and an older host fails session resume. `package.json` declares both `@deepseek-ai/dsh-llm` and
+> `@deepseek-ai/dsh-settings` as `^0.1.1-rc.2` (any 0.1.x at or above it), which is what dsh-market's
+> "dependency version mismatch" check reads; an older host is reported as "below declared minimum", so upgrade DSH
+> first. No upper bound is declared: the plugin only uses stable public services (`settings`, `webServer`,
+> `approval/request`, slot seats), so newer 0.1.x releases are expected to keep working — an incompatibility
+> surfaces in the plugin log under the `[dsh-approval-mode]` prefix. The **plugin configuration card** needs the
+> host's client `settingsScope` service (`0.1.0-rc.7` and newer); an older host simply does not show the card, and
+> the approval-mode button and bypass itself are unaffected.
+
 Pinning a commit is recommended so later pushes cannot silently change what runs:
 
 ```sh
@@ -41,7 +63,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 Or download the tarball from [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) and install it:
 
 ```sh
-dsh plugin --profile web add ./dsh-approval-mode-0.1.1-rc.2.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.1-rc.4.tgz
 ```
 
 Verify the composed config contains the plugin layer:
