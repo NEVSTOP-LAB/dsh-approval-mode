@@ -43,15 +43,12 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > `--profile web` 是默认 profile。桌面版（[DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
 
 > [!NOTE]
-> **版本要求与兼容性**：本插件在 DSH `0.1.5-rc.2`（DSH Desktop 2.0.11）上实测可用；声明的下界是 `0.1.1-rc.2`
-> ——`createUserMessage` 提供的稳定消息标识自该版本起必需，低于它的宿主会让会话恢复失败。
-> `package.json` 的 `peerDependencies` 把 `@deepseek-ai/dsh-llm` 与 `@deepseek-ai/dsh-settings` 都写成
-> `^0.1.1-rc.2`（即 0.1.x 线上不低于该版本），dsh-market 的「依赖版本不匹配」检查据此判定；
-> 低于下界会报「低于声明下界」，请先升级 DSH。
-> 上界不设：插件只用稳定的公开服务（`settings`、`webServer`、`approval/request`、slot 座位），
-> 因此对更新的 0.1.x 保持兼容——遇到不兼容会在插件日志里以 `[dsh-approval-mode]` 前缀报错。
-> 其中**插件页配置卡片**需要宿主提供客户端 `settingsScope` 服务（`0.1.0-rc.7` 起）；旧宿主只是不显示这张卡片，
-> 输入框旁边的「审批模式」按钮和绕过审批本身不受影响。
+> **版本要求**：需要 DSH `0.1.1-rc.2` 及以上（0.1.x 线，无上界）；已在 DSH `0.1.5-rc.2`
+> （DSH Desktop 2.0.11）上验证。低于 `0.1.1-rc.2` 的宿主会被 dsh-market 标记为
+> 「低于声明下界」，请先升级 DSH。
+> 「设置 → 插件 → 插件配置」中的配置卡片需要 DSH `0.1.0-rc.7` 及以上；更旧的宿主只是
+> 不显示这张卡片，输入框旁边的「审批模式」按钮与绕过审批不受影响。
+> 开发、版本声明的判定依据与兼容性校验方法见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 建议锁定提交，避免后续更新改变实际内容：
 

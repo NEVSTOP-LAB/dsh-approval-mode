@@ -43,16 +43,12 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > `--profile web` is the default profile. Use `--profile desktop` for [DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop); replace `web` with the name of any other profile.
 
 > [!NOTE]
-> **Version requirement and compatibility**: verified on DSH `0.1.5-rc.2` (DSH Desktop 2.0.11). The declared lower
-> bound is `0.1.1-rc.2` — `createUserMessage` has supplied the stable message identity this plugin needs only since
-> that release, and an older host fails session resume. `package.json` declares both `@deepseek-ai/dsh-llm` and
-> `@deepseek-ai/dsh-settings` as `^0.1.1-rc.2` (any 0.1.x at or above it), which is what dsh-market's
-> "dependency version mismatch" check reads; an older host is reported as "below declared minimum", so upgrade DSH
-> first. No upper bound is declared: the plugin only uses stable public services (`settings`, `webServer`,
-> `approval/request`, slot seats), so newer 0.1.x releases are expected to keep working — an incompatibility
-> surfaces in the plugin log under the `[dsh-approval-mode]` prefix. The **plugin configuration card** needs the
-> host's client `settingsScope` service (`0.1.0-rc.7` and newer); an older host simply does not show the card, and
-> the approval-mode button and bypass itself are unaffected.
+> **Version requirement**: DSH `0.1.1-rc.2` or newer on the 0.1.x line (no upper bound); verified on DSH
+> `0.1.5-rc.2` (DSH Desktop 2.0.11). An older host is reported by dsh-market as "below declared minimum",
+> so upgrade DSH first. The configuration card under Settings → Plugins → Plugin configuration needs DSH
+> `0.1.0-rc.7` or newer; on an older host only that card is absent, while the approval-mode button and
+> bypass itself are unaffected. Development, the reasoning behind the declared ranges and the compatibility
+> checklist live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Pinning a commit is recommended so later pushes cannot silently change what runs:
 

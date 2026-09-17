@@ -1,7 +1,8 @@
 # DSH-Approval-Mode 设计文档
 
-> 本文档描述插件的设计目标、架构、关键机制与验证记录，供维护与二次开发参考。
-> 用户可见的功能说明与安装方式见根目录 [`README.md`](../README.md)。
+> 本文档描述插件的设计目标、架构与关键机制。
+> 用户可见的功能说明与安装方式见根目录 [`README.md`](../README.md)；
+> 开发流程、版本要求与兼容性校验方法见 [`CONTRIBUTING.md`](../CONTRIBUTING.md)。
 
 ## 1. 背景与目标
 
@@ -209,57 +210,18 @@ dsh-approval-mode/
 
 ### 3.6 已知坑
 
-1. **`dsh plugin remove` 对 `link:` 安装的依赖会删除 link 目标目录内容**
-   （本次开发中源目录被清空）。开发验证请用 tarball 安装（`add ./x.tgz`），
-   不要对 `link:` 安装执行 remove。
-2. **link: 目录安装时 Node 从包真实路径解析 import**，找不到 DSH 共享层
-   （`@deepseek-ai/*`）；tarball / npm / git 安装由 pnpm store 管理依赖，无此问题。
-3. **pnpm ≥10 拒绝依赖的构建脚本**：如安装报 `ERR_PNPM_IGNORED_BUILDS`，
-   按官方指南在 profile 的 `pnpm-workspace.yaml` 添加
-   `allowBuilds: { <pkg>: true }`。本插件无构建脚本，不受影响。
+`link:` 安装会删除源目录、link 安装解析不到 DSH 共享层、pnpm ≥10 拒绝构建脚本——
+三条开发坑与规避方式见 [CONTRIBUTING.md §6](../CONTRIBUTING.md#6-开发坑)。
 
 ### 3.7 版本要求与兼容性
 
-**声明位置就是 `package.json` 的 `peerDependencies`**：dsh-market 的兼容性预检
-（`assessCompatibility` → `classifyPeer`）读的正是各插件 peer 范围与 profile 中
-已解析的宿主版本，并把不一致判成 `belowMin`（低于声明下界 = 环境太旧）或
-`aboveMax`（高于显式上界）。它另外会警告把 DSH 共享宿主包写进 `dependencies`
-的插件（可能遮蔽宿主版本）——本插件的 DSH 包**全部只在 `peerDependencies`**，
-`dependencies` 为空。
-
-当前声明（与本插件实际消费的 API 一一对应）：
-
-| peer | 范围 | 依据 |
-| --- | --- | --- |
-| `@deepseek-ai/dsh-llm` | `^0.1.1-rc.2` | `createUserMessage`：稳定消息标识自 0.1.1-rc.2 起必需（否则会话恢复失败） |
-| `@deepseek-ai/dsh-settings` | `^0.1.1-rc.2` | settings 服务的 `register/get/update`；与 dsh-llm 同属 DSH 核心版本线 |
-| `@deepseek-ai/cordis` | `^4.0.1` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
-| `@deepseek-ai/schemastery` | `^3.18.1` | namespace schema |
-| `react` | `^18.2.0` | client bundle（宿主 seed 模块提供） |
-
-**上界不设**（caret 只界到 0.2.0）：插件只用稳定公开服务——`settings`、
-`webServer`、`approval/request` 水瀑布、slot 座位——不依赖内部符号，
-这也是 §2.1 放弃 settings RPC 白名单与 typert Remote 的直接收益。
-
-**逐版本校验记录见 §5.3**；对外描述（用户可见的那份）写在两份 README 的
-`> [!NOTE]` 里，并保持与本表一致。
+版本要求声明在 `package.json` 的 `peerDependencies`（dsh-market 的兼容性预检读它），
+每条范围对应的依据、上界为何不设、以及逐版本校验方法见
+[CONTRIBUTING.md §3–§4](../CONTRIBUTING.md#3-版本要求与兼容性)。
 
 ## 4. 源码结构
 
-```
-dsh-approval-mode/
-├── README.md            # 用户可见功能 + 风险提示 + 安装说明 + 版本说明
-├── README.en.md         # 同上（英文）
-├── doc/design.md        # 本文档
-├── package.json         # bundle manifest（dsh.bundle + dsh.client + peer 版本要求）
-├── cordis.patch.yml     # 组合层：插入插件行
-├── index.js             # Host half（应答器 + settings + 代理通知）
-├── lib/client.js        # Client half（工具栏控件 + 插件页配置卡片）
-└── scripts/
-    ├── dshClient.js     # 轻量 DSH 回环 API 客户端（HTTP + WebSocket，自包含）
-    ├── listen-only.mjs  # 审批帧监听验证脚本（不应答）
-    └── check-client.mjs # 离线 client bundle 契约检查（无依赖，CI 用）
-```
+目录结构与各文件职责见 [CONTRIBUTING.md §1](../CONTRIBUTING.md#1-目录结构)。
 
 ## 5. 验证记录
 
@@ -286,43 +248,11 @@ dsh-approval-mode/
   - **持久化**：重启实例后 `GET` 仍返回 `bypass`（settings.yaml 落盘）
 - Client bundle：`GET /plugins/dsh-approval-mode/client.js` → 200（进 web graph）。
 
-### 5.3 0.1.5-rc.2 兼容性校验与离线契约检查（2026-09）
+### 5.3 0.1.5-rc.2 兼容性校验（2026-09）
 
-实测环境：DSH Desktop 2.0.11 / node v24.18.1 / `@deepseek-ai/*` 共享层
-`0.1.5-rc.2`（`cordis` 4.0.2、`schemastery` 3.18.2），插件以
-`git+https://github.com/NEVSTOP-LAB/dsh-approval-mode.git` 装在 `desktop` profile。
-
-**按 API 逐个核对**（读宿主实现，不靠记忆）：
-
-| 插件用法 | 0.1.5-rc.2 中的实现位置 | 结论 |
-| --- | --- | --- |
-| `ctx.settings.register(ns, schema, {applies})` | `dsh-settings` `SettingsProvider.register` | 一致；`describe()` 已无白名单，返回全部已注册命名空间 |
-| `ctx.webServer.register({kind:"exact",path,handler})` | `dsh-host-webserver` `register` | 一致（重复 (kind,path) 抛错） |
-| `ctx.on("approval/request", fn, true)`（prepend） | `dsh-user-approval` `ctx.waterfall(…, "approval/request", …)` | 一致 |
-| `createUserMessage` | `dsh-llm` 导出表 | 一致 |
-| `slots.register({name,id/order/label,locale})` + `props.t` | `dsh-client-ui-renderer`（`entry.locale` → `kit.t`） | 一致 |
-| `props.useProjection("permissions")` | 标准 props（`dsh-client-ui-conversation` 等） | 一致 |
-| `settings.plugin.item`（keyed slot）+ `settingsScope` | `dsh-client-ui-settings-plugins` / `dsh-client-ui-settings` | 一致；卡片 keyed by `approval-mode` |
-
-**运行时证据**：
-
-- 宿主日志 `[dsh-market] hot-mounted dsh-approval-mode`，无插件相关错误、
-  `logs\host\*.error.log` 无本插件条目（0.1.5-rc.2 上正常挂载）。
-- `$DSH_HOME/settings.yaml` 中存在 `approval-mode: { mode: bypass }` 且写入时间
-  为当天：命名空间注册与 `settings.update` 写入路径在 0.1.5-rc.2 上工作正常。
-- 控制路由在 GUI 外直接请求会得到 **403**：那是 DSH Desktop 的浏览器访问围栏
-  （`lib/webserver.js` → `decideDesktopBrowserAccess`，无 renderer header 且未开启
-  普通浏览器访问时一律 403 `forbidden`），**不是插件路由的问题**——Electron 窗口
-  自带该 header，页面内同源 fetch 正常。把它当成插件故障会误判。
-
-**离线契约检查**（`scripts/check-client.mjs`，已并入 `npm run check` / CI）：
-以 stub 的 `window.__ModuleLoader__`、`document`、`react`、`fetch` 加载
-`lib/client.js`，断言：两个界面各自注册进正确槽位、卡片 `key` = settings 命名空间、
-无 `settingsScope` 的宿主只丢卡片不丢按钮、卡片渲染出两个选项且当前值选中、
-点击后 `POST /approval-mode` 的 body 正确、卡片用到的词典 key 中英文都存在。
-**反向验证**：把 `key: NS` 改成 `key: NS + "-probe"`，脚本报
-`FAIL plugin card registered into settings.plugin.item keyed by the settings namespace`
-并以退出码 1 结束（已实测）。
+逐 API 对照表、运行时证据（宿主日志、`settings.yaml`）、GUI 外请求得到 403 的原因，
+以及离线契约检查的断言清单与反向验证方法，全部记在
+[CONTRIBUTING.md §4](../CONTRIBUTING.md#4-兼容性校验怎么做)（含校验记录）。
 
 ## 6. 已知边界与后续
 
@@ -332,5 +262,5 @@ dsh-approval-mode/
 - 多窗口模式同步：settings/updated 事件 + 各窗口重新读取；同一窗口内两个界面由
   模块级 `modeStore` 同步。
 - 插件页卡片依赖宿主客户端 `settingsScope` 服务（0.1.0-rc.7+）；更旧的宿主上
-  卡片不出现，其余功能不受影响（§3.4.1、§5.3）。
+  卡片不出现，其余功能不受影响（§3.4.1、[CONTRIBUTING.md §4](../CONTRIBUTING.md#4-兼容性校验怎么做)）。
 - 可发布 npm（`npm publish`）后 `dsh plugin add dsh-approval-mode`。
