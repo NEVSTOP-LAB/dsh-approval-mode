@@ -134,6 +134,17 @@ dsh-market 也会就此告警。本插件 `dependencies` 为空，宿主共享�
 
 插件版本跟 DSH 核心版本线走（当前 `0.1.1-rc.<n>`）。发布流程见 §5。
 
+### 3.5 配置卡片的额外依赖，以及它为什么不进 README
+
+配置卡片需要宿主的客户端 `settingsScope` 服务（由 `@deepseek-ai/dsh-client-ui-settings`
+提供，0.1.0-rc.7 起）。该下界**低于**本插件声明的 DSH 下界 `0.1.1-rc.2`，因此在所有
+**受支持**的宿主上卡片都可用——README 因此只声明版本下界，不再描述「旧宿主少一张卡片」
+这种落在支持范围之外的情形。
+
+降级路径仍然存在，且由 `scripts/check-client.mjs` 断言：它覆盖的是**组装层没有引入
+`dsh-client-ui-settings`** 的非常规组合（版本够新、客户端少了该服务）。此时只有卡片不出现，
+工具栏按钮与绕过审批不受影响。
+
 ## 4. 兼容性校验怎么做
 
 每次 DSH 大版本更新后，按下面的顺序重新校验，并把结论写回 §3.1 的表和 README 的事实段。
@@ -188,8 +199,10 @@ npm run pack        # → dist/dsh-approval-mode-<version>.tgz
 3. 跑 `npm run check`；
 4. 提交并推送，然后打 `v<version>` tag。
 
-发布内容由 `package.json` 的 `files` 决定（`index.js`、`lib/client.js`、
-`cordis.patch.yml`、README、LICENSE）；开发脚本与文档不进 tarball。
+发布内容由 `package.json` 的 `files` 决定：`index.js`、`lib/client.js`、
+`cordis.patch.yml`、两份 README、LICENSE，以及本文档与 `doc/`——README 指向本文档的
+**相对链接在安装后的包里同样可用**（缺了它，tarball 用户点开就是死链）。`scripts/`
+是开发工具，不进 tarball。
 
 ## 6. 开发坑
 

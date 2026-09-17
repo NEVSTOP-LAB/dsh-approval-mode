@@ -24,6 +24,8 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
+    "CONTRIBUTING.md",
+    "doc/",
     "LICENSE"
   ],
   "dsh": {

@@ -45,9 +45,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > [!NOTE]
 > **Version requirement**: DSH `0.1.1-rc.2` or newer on the 0.1.x line (no upper bound); verified on DSH
 > `0.1.5-rc.2` (DSH Desktop 2.0.11). An older host is reported by dsh-market as "below declared minimum",
-> so upgrade DSH first. The configuration card under Settings → Plugins → Plugin configuration needs DSH
-> `0.1.0-rc.7` or newer; on an older host only that card is absent, while the approval-mode button and
-> bypass itself are unaffected. Development, the reasoning behind the declared ranges and the compatibility
+> so upgrade DSH first. Development, the reasoning behind the declared ranges and the compatibility
 > checklist live in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Pinning a commit is recommended so later pushes cannot silently change what runs:

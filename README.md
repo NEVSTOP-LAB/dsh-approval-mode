@@ -46,8 +46,6 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > **版本要求**：需要 DSH `0.1.1-rc.2` 及以上（0.1.x 线，无上界）；已在 DSH `0.1.5-rc.2`
 > （DSH Desktop 2.0.11）上验证。低于 `0.1.1-rc.2` 的宿主会被 dsh-market 标记为
 > 「低于声明下界」，请先升级 DSH。
-> 「设置 → 插件 → 插件配置」中的配置卡片需要 DSH `0.1.0-rc.7` 及以上；更旧的宿主只是
-> 不显示这张卡片，输入框旁边的「审批模式」按钮与绕过审批不受影响。
 > 开发、版本声明的判定依据与兼容性校验方法见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 建议锁定提交，避免后续更新改变实际内容：
