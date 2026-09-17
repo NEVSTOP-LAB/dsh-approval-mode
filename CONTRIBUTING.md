@@ -22,6 +22,7 @@ dsh-approval-mode/
 ├── README.md            # 用户可见：功能、风险提示、安装、配置
 ├── README.en.md         # 同上（英文）
 ├── CONTRIBUTING.md      # 本文档：开发流程、版本要求、验证方法
+├── CHANGELOG.md         # 每个版本的变更；发布正文的来源
 ├── doc/design.md        # 设计文档：架构与关键机制
 ├── package.json         # bundle manifest（dsh.bundle + dsh.client + peer 版本要求）
 ├── cordis.patch.yml     # 组合层：插入插件行
@@ -31,6 +32,7 @@ dsh-approval-mode/
     ├── dshClient.js     # 轻量 DSH 回环 API 客户端（HTTP + WebSocket，自包含）
     ├── listen-only.mjs  # 审批帧监听验证脚本（不应答）
     ├── check-client.mjs # 离线 client bundle 契约检查（零依赖）
+    ├── release-notes.mjs# 由 CHANGELOG 组装 Release 正文（零依赖）
     └── pack.mjs         # 跨平台打包（npm pack → dist/）
 ```
 
@@ -132,7 +134,17 @@ dsh-market 也会就此告警。本插件 `dependencies` 为空，宿主共享�
 
 ### 3.4 版本号与发布的关系
 
-插件版本跟 DSH 核心版本线走（当前 `0.1.1-rc.<n>`）。发布流程见 §5。
+插件版本**独立于** DSH 核心版本线演进（DSH 兼容范围由 §3.1 的 peer 范围表达，不要用插件
+版本号去对齐核心版本——历史上 `0.1.1-rc.2` 曾对齐过一次核心，那是特例）：
+
+- 新增功能 → 进 minor：`0.1.1` → **`0.1.2`**；
+- 仅修复 → 进 patch：`0.1.2` → `0.1.3`；
+- **正式版之后不要再追加同一版本的 `-rc.N`**：预发布号只属于尚未发布的版本。
+  `v0.1.1-rc.4` 就是这么被否掉的——`0.1.1` 已经是正式版，再发它的 rc 等于往回走。
+
+发布时 `package.json` 的 `version`、tag（`v<version>`）与 `CHANGELOG.md` 的小节标题三者
+必须一致：工作流会校验前两者，`scripts/release-notes.mjs` 用第三者组装 Release 正文
+（缺失时退化为提交列表）。流程见 §5。
 
 ### 3.5 配置卡片的额外依赖，以及它为什么不进 README
 
@@ -189,20 +201,30 @@ npm run pack        # → dist/dsh-approval-mode-<version>.tgz
 - **CI**（`.github/workflows/ci.yml`）：push/PR 到 main 时跑 `npm run check` 与 `npm run pack`。
 - **Release**（`.github/workflows/release.yml`）：推送 `v*` tag 时触发，**先校验
   `package.json` 的 version 与 tag 一致**（不一致直接失败），然后 check、pack、
-  创建 GitHub Release 并附上 `dist/*.tgz`。
+  用 `scripts/release-notes.mjs` 组装正文、创建 GitHub Release 并附上 `dist/*.tgz`。
+
+**Release 正文来自 `CHANGELOG.md`**：`scripts/release-notes.mjs` 取该 tag 对应的
+`## [<version>]` 小节，接上安装说明。所以**发版前必须先在 CHANGELOG.md 里写这一节**，
+否则正文只会退化成提交列表（脚本会在 stderr 与正文里都标注这一点，不会静默）。
+脚本零依赖，可以本地预览：
+
+```sh
+node scripts/release-notes.mjs --version 0.1.2 --changelog CHANGELOG.md --out -
+```
 
 发版清单：
 
-1. 改 `package.json` 的 `version`；
-2. 同步两份 README 里 tarball 示例的文件名（`dsh-approval-mode-<version>.tgz`）——
+1. 在 `CHANGELOG.md` 里写 `## [<version>] - <date>` 小节（`[Unreleased]` 留空）；
+2. 改 `package.json` 的 `version`（规则见 §3.4）；
+3. 同步两份 README 里 tarball 示例的文件名（`dsh-approval-mode-<version>.tgz`）——
    这里最容易腐坏；
-3. 跑 `npm run check`；
-4. 提交并推送，然后打 `v<version>` tag。
+4. 跑 `npm run check`，并用上面的命令预览一遍 Release 正文；
+5. 提交并推送，然后打 `v<version>` tag。
 
 发布内容由 `package.json` 的 `files` 决定：`index.js`、`lib/client.js`、
-`cordis.patch.yml`、两份 README、LICENSE，以及本文档与 `doc/`——README 指向本文档的
-**相对链接在安装后的包里同样可用**（缺了它，tarball 用户点开就是死链）。`scripts/`
-是开发工具，不进 tarball。
+`cordis.patch.yml`、两份 README、`CONTRIBUTING.md`、`CHANGELOG.md`、`doc/`、LICENSE——
+README 指向本文档的**相对链接在安装后的包里同样可用**（缺了它，tarball 用户点开就是死链）。
+`scripts/` 是开发工具，不进 tarball。
 
 ## 6. 开发坑
 

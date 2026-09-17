@@ -14,11 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the release body lists what changed since
+          # the previous tag.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Verify version matches tag
-        id: version
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -26,28 +29,27 @@ jobs:
             echo "package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)" >&2
             exit 1
           fi
-          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
       - name: Syntax check
         run: npm run check
       - name: Pack tarball
         run: npm run pack
+      - name: Compose release notes
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            git log --pretty='- %s' "$PREV..${GITHUB_REF_NAME}" > commits.txt
+          else
+            git log --pretty='- %s' "${GITHUB_REF_NAME}" > commits.txt
+          fi
+          node scripts/release-notes.mjs \
+            --version "${GITHUB_REF_NAME}" \
+            --changelog CHANGELOG.md \
+            --commits commits.txt \
+            --sha "${GITHUB_SHA}" \
+            --out release-notes.md
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }} dsh-approval-mode
-          body: |
-            ${{ github.ref_name }} DSH-Approval-Mode
-
-            ## 安装
-
-            ```sh
-            # 从 tarball（本 Release 附件）
-            dsh plugin --profile web add ./dsh-approval-mode-${{ steps.version.outputs.version }}.tgz
-
-            # 或从仓库安装（锁定提交以固定内容）
-            dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#${{ github.sha }}
-            ```
-
-            `--profile web` 是默认 profile；桌面版用 `--profile desktop`。
-            详见 [README](https://github.com/NEVSTOP-LAB/dsh-approval-mode#readme)。
+          body_path: release-notes.md
           files: dist/*.tgz
