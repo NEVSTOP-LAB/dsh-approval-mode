@@ -166,6 +166,8 @@ reason: `escalate sandbox to ${mode}: ${justification}`
 回环校验（`isLoopbackRequest`）在读写之前；非法 mode → 400 `invalid-mode`，
 非法 JSON → 400 `bad-json`，其他方法 → 405，非回环 → 403。
 `?session=`（空值）等同于不带该参数，即默认地址。
+session 地址会成为 `sessions` 对象的键，因此 `__proto__` / `constructor` / `prototype`
+三个会改写原型而不是新增条目的键被拒（400 `invalid-session`）——否则写入会被静默丢弃。
 
 ### 3.4 UI 位置与视觉
 

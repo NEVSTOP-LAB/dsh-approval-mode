@@ -342,6 +342,8 @@ console.log("dsh-approval-mode: host contract");
   check((await ui.request({ url: `${host.ROUTE_PATH}?session=one` })).body.mode === "bypass-except-escalation", "writing the default leaves a session's own mode alone");
   const emptySession = await ui.request({ url: `${host.ROUTE_PATH}?session=` });
   check(emptySession.body.mode === "ask" && emptySession.body.session === undefined, "an empty session parameter addresses the default");
+  const poisoned = await ui.request({ url: `${host.ROUTE_PATH}?session=__proto__` });
+  check(poisoned.status === 400 && poisoned.body.error === "invalid-session", "an address that would rewrite a prototype is refused");
 
   const nonsensical = await ui.request({ method: "POST", body: JSON.stringify({ mode: "nonsense" }) });
   check(nonsensical.status === 400 && nonsensical.body.error === "invalid-mode", "an unknown mode is refused");

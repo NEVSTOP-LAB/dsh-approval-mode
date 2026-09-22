@@ -80,6 +80,24 @@ export const MODE_SCHEMA = z.object({
 export const ROUTE_PATH = "/approval-mode";
 
 /**
+ * Session addresses this route refuses. A session id becomes the KEY of an
+ * entry in the `sessions` settings object, and these three are the keys whose
+ * assignment rewrites a prototype instead of creating an entry — the write
+ * would be silently dropped rather than stored, so the address is refused
+ * instead of accepted and ignored.
+ */
+export const RESERVED_SESSION_KEYS = ["__proto__", "constructor", "prototype"];
+
+/**
+ * Whether an address names a session this route may write.
+ * @param value - the raw `session` query parameter.
+ * @returns true when the value can key a `sessions` entry.
+ */
+export function isSessionAddress(value) {
+  return typeof value === "string" && value.length > 0 && !RESERVED_SESSION_KEYS.includes(value);
+}
+
+/**
  * The sandbox-escalation ask, as `@deepseek-ai/dsh-sandbox` spells it:
  * `approveEscalation()` requests its decision with the reason
  * `escalate sandbox to <mode>: <justification>`, from `dsh-tool-bash`,
@@ -238,7 +256,15 @@ export function apply(ctx) {
       let session = null;
       try {
         const addressed = new URL(req.url ?? ROUTE_PATH, "http://localhost").searchParams.get("session");
-        session = addressed === null || addressed.length === 0 ? null : addressed;
+        // An absent or empty parameter addresses the default; anything else
+        // must be an address this route can actually key an entry with.
+        if (addressed !== null && addressed.length > 0) {
+          if (!isSessionAddress(addressed)) {
+            writeJson(400, { ok: false, error: "invalid-session" });
+            return;
+          }
+          session = addressed;
+        }
       } catch {
         session = null;
       }

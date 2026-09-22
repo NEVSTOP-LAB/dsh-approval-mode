@@ -97,7 +97,7 @@ node scripts/check-host.mjs
 4. 模式按会话解析，默认值兜底；
 5. 0.1.2 及更早写的全局 `mode` 升级后仍然决定默认值（settings.yaml 迁移）；
 6. 控制路由的地址语义（无 `session` = 默认值，`?session=` = 该会话），
-   以及非回环 403、非法 mode 400、坏 JSON 400、错误方法 405。
+   以及非回环 403、非法 mode 400、坏 JSON 400、非法 session 地址 400、错误方法 405。
 
 打桩替换的是库，不是被测代码：`index.js` 是磁盘上那一份，只有它的 import 被改写。
 
