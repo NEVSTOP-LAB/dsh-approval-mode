@@ -64,7 +64,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 也可以从 [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) 下载 tarball 安装：
 
 ```sh
-dsh plugin --profile web add ./dsh-approval-mode-0.1.2.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.3.tgz
 ```
 
 安装后确认组合层里出现该插件：
