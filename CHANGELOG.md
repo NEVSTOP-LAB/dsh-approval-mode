@@ -34,6 +34,8 @@
   遗留值迁移与控制路由地址语义）。每条新断言都做过反向验证（退回修复 ⇒ 对应用例失败）。
 - 实测（pnpm 11.8、`autoInstallPeers: false`）：旧清单复现 issue #10 的五条
   `missing peer`，新清单输出 `No peer dependency issues found`。
+- 修复了 Copilot 在 #12 上提出的 5 条问题（默认值对继承会话的生效范围、两处「绕动」错别字、
+  §1 目标句未限定提权），5 个 review thread 已 resolve。
 
 ## [0.1.2] - 2026-09-17
 
