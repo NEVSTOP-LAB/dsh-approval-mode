@@ -1,7 +1,7 @@
 {
   "name": "dsh-approval-mode",
   "version": "0.1.2",
-  "description": "Approval mode control for DeepSeek Harness: default approval (ask) or bypass approval (auto-approve every tool call), next to the permission selector. DSH 审批模式插件。",
+  "description": "Approval mode control for DeepSeek Harness: default approval, bypass approval, or bypass that still asks before a sandbox escalation, next to the permission selector. DSH 审批模式插件。",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -40,6 +40,9 @@
       "platform": "web"
     }
   },
+  "engines": {
+    "dsh": "^0.1.1-rc.2"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
@@ -47,12 +50,29 @@
     "@deepseek-ai/schemastery": "^3.18.1",
     "react": "^18.2.0"
   },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-settings": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "scripts": {
-    "check": "node --check index.js && node --check lib/client.js && node --check scripts/dshClient.js && node --check scripts/listen-only.mjs && node --check scripts/check-client.mjs && node --check scripts/release-notes.mjs && node scripts/check-client.mjs",
+    "check": "node --check index.js && node --check lib/client.js && node --check scripts/dshClient.js && node --check scripts/listen-only.mjs && node --check scripts/check-client.mjs && node --check scripts/check-host.mjs && node --check scripts/release-notes.mjs && node scripts/check-client.mjs && node scripts/check-host.mjs",
     "pack": "node scripts/pack.mjs"
   }
 }

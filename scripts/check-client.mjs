@@ -13,13 +13,18 @@
  *      the settings namespace — what makes the plugins tab dispatch it;
  *   3. a host WITHOUT the settingsScope client service still gets the picker
  *      and no card (the graceful-degradation claim in the file header);
- *   4. the card renders both options, reflects the current mode, and writes the
- *      chosen one through the Host control route;
- *   5. every dictionary key the surfaces ask for exists in BOTH languages;
- *   6. a failed read leaves the mode UNKNOWN on both surfaces instead of
+ *   4. the card renders every mode option, reflects the current default, and
+ *      writes the DEFAULT address;
+ *   5. the picker renders every mode option, shows the SESSION's value rather
+ *      than the default's, and writes the SESSION address — the split that
+ *      keeps a toolbar switch from becoming the next session's default;
+ *   6. a session with no mode of its own follows a change to the default
+ *      without a reload;
+ *   7. every dictionary key the surfaces ask for exists in BOTH languages;
+ *   8. a failed read leaves the mode UNKNOWN on both surfaces instead of
  *      presenting the schema default as the setting;
- *   7. a read that a later selection superseded never overwrites that selection;
- *   8. a failed write restores the last value the HOST confirmed — not the
+ *   9. a read that a later selection superseded never overwrites that selection;
+ *  10. a failed write restores the last value the HOST confirmed — not the
  *      optimistic value of an overlapping selection.
  *
  * It deliberately does not import lib/client.js as a module, needs no browser
@@ -36,6 +41,9 @@ const NS = "approval-mode";
 const ROUTE = "/approval-mode";
 const SELECT_SLOT = "conversation.input.left";
 const CARD_SLOT = "settings.plugin.item";
+/** The session the picker seat belongs to; the Host address is derived from it. */
+const SESSION = "session-1";
+const SESSION_ROUTE = `${ROUTE}?session=${SESSION}`;
 
 const failures = [];
 function check(condition, label) {
@@ -117,7 +125,7 @@ function deferred() {
  * during the render call — a stub simplification that is what makes the store's
  * lazy load observable offline.
  */
-function boot({ withSettingsScope, stateQueue = [], fetchImpl }) {
+function boot({ withSettingsScope, stateQueue = [], fetchImpl, sessionId = SESSION }) {
   let registration;
   const window = { __ModuleLoader__: { load: (value) => { registration = value; } } };
   const document = {
@@ -193,7 +201,10 @@ function boot({ withSettingsScope, stateQueue = [], fetchImpl }) {
       const entry = surface(slot);
       if (entry === undefined) throw new Error(`no registration for ${slot}`);
       const props = { t: translate(dictionaries) };
-      if (slot === SELECT_SLOT) props.useProjection = () => null;
+      if (slot === SELECT_SLOT) {
+        props.useProjection = () => null;
+        props.sessionId = sessionId;
+      }
       return entry.component(props);
     }
   };
@@ -209,9 +220,21 @@ function toolbarLabel(tree) {
   return { text: collectText(label).join(""), trigger };
 }
 
+/** One menu entry by its exact label — "绕过审批" is a prefix of the safer one. */
 function menuitem(tree, text) {
   return findBy(tree, (node) => node.props?.role === "menuitem")
-    .find((node) => collectText(node).join("").includes(text));
+    .find((node) => collectText(node).join("") === text);
+}
+
+/** Record every request the bundle makes, so an address can be asserted. */
+function recorder(respond) {
+  const requests = [];
+  const fetchImpl = (url, init) => {
+    const entry = { url, method: init?.method ?? "GET", body: init?.body };
+    requests.push(entry);
+    return respond(entry);
+  };
+  return { requests, fetchImpl };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,13 +261,10 @@ console.log("dsh-approval-mode: client bundle contract");
   check(!ui.registrations.some((entry) => entry.slot === CARD_SLOT), "without settingsScope no plugin card is registered");
 }
 
-// 4: render the expanded card against a bypass-mode host and switch it.
+// 4: the card renders every mode against a bypass host and writes the DEFAULT.
 {
-  const requests = [];
-  const fetchImpl = (url, init) => {
-    requests.push({ url, method: init?.method ?? "GET", body: init?.body });
-    return init?.method === "POST" ? okJson({ ok: true }) : okJson({ ok: true, mode: "bypass" });
-  };
+  const { requests, fetchImpl } = recorder((entry) =>
+    entry.method === "POST" ? okJson({ ok: true }) : okJson({ ok: true, mode: "bypass" }));
   const ui = boot({ withSettingsScope: true, fetchImpl });
   const snapshot = { mode: "bypass", ready: true, known: true, saving: false, failed: false };
   const tree = ui.render(CARD_SLOT, [snapshot, true]);
@@ -252,39 +272,96 @@ console.log("dsh-approval-mode: client bundle contract");
   const texts = collectText(tree).join(" | ");
   check(tree.type === "li", "card renders a list item (the tab's container is a <ul>)");
   check(texts.includes(ui.dictionaries[NS].zh["card.title"]), "card header shows the plugin title");
-  check(texts.includes(ui.dictionaries[NS].zh["item.ask"]) && texts.includes(ui.dictionaries[NS].zh["item.bypass"]), "card shows both mode options");
+  const items = ["item.ask", "item.bypassSafe", "item.bypass"].map((key) => ui.dictionaries[NS].zh[key]);
+  check(items.every((label) => texts.includes(label)), "card shows every mode option");
   check(texts.includes(ui.dictionaries[NS].zh["card.hint.bypass"]), "card explains the currently selected mode");
 
   const radios = findBy(tree, (node) => node.props?.role === "radio");
-  check(radios.length === 2, "card renders exactly two radio options");
-  const asks = radios.find((node) => collectText(node).join("").includes(ui.dictionaries[NS].zh["item.ask"]));
-  const bypasses = radios.find((node) => collectText(node).join("").includes(ui.dictionaries[NS].zh["item.bypass"]));
-  check(bypasses?.props?.["aria-checked"] === true, "the current mode is the checked option");
-  check(asks?.props?.["aria-checked"] === false, "the other option is not checked");
+  check(radios.length === 3, "card renders exactly three radio options");
+  const chosen = radios.find((node) => collectText(node).join("") === ui.dictionaries[NS].zh["item.bypass"]);
+  const others = radios.filter((node) => node !== chosen);
+  check(chosen?.props?.["aria-checked"] === true, "the current mode is the checked option");
+  check(others.every((node) => node.props["aria-checked"] === false), "the other options are not checked");
 
+  const asks = radios.find((node) => collectText(node).join("") === ui.dictionaries[NS].zh["item.ask"]);
   asks?.props?.onClick?.();
   await tick();
   const post = requests.find((entry) => entry.method === "POST");
-  check(post !== undefined && post.url === ROUTE, "choosing a mode POSTs to the Host control route");
+  check(post !== undefined && post.url === ROUTE, "the card writes the DEFAULT address");
   check(post !== undefined && post.body === JSON.stringify({ mode: "ask" }), "the POST body carries the chosen mode");
 }
 
-// 6: a failed read leaves the value UNKNOWN — never the schema default.
+// 5: the picker shows and writes the SESSION's value, never the default's.
+{
+  const { requests, fetchImpl } = recorder((entry) => {
+    if (entry.method === "POST") return okJson({ ok: true });
+    return okJson({ ok: true, mode: entry.url === SESSION_ROUTE ? "bypass-except-escalation" : "ask" });
+  });
+  const ui = boot({ withSettingsScope: true, fetchImpl });
+  check(requests.length === 0, "the picker fetches nothing until it is rendered");
+
+  const menu = ui.render(SELECT_SLOT, [undefined, true]);
+  await tick();
+  check(
+    toolbarLabel(ui.render(SELECT_SLOT, [undefined])).text === ui.dictionaries[NS].zh["mode.bypassSafe"],
+    "the picker shows the SESSION's mode while the default is ask"
+  );
+  check(requests.some((entry) => entry.url === SESSION_ROUTE), "the picker reads the SESSION address");
+
+  const menuitems = findBy(menu, (node) => node.props?.role === "menuitem");
+  check(menuitems.length === 3, "the picker offers exactly three modes");
+  menuitem(menu, ui.dictionaries[NS].zh["item.bypass"])?.props?.onClick?.();
+  await tick();
+  const post = requests.find((entry) => entry.method === "POST");
+  check(post !== undefined && post.url === SESSION_ROUTE, "the picker writes the SESSION address");
+  check(post !== undefined && post.body === JSON.stringify({ mode: "bypass" }), "the picker POST body carries the chosen mode");
+}
+
+// 6: a session that follows the default follows it live while both are mounted.
+{
+  let defaultMode = "ask";
+  const fetchImpl = (url, init) => {
+    if (init?.method === "POST") {
+      defaultMode = JSON.parse(init.body).mode;
+      return okJson({ ok: true });
+    }
+    // A session with no override of its own resolves to the default.
+    return okJson({ ok: true, mode: defaultMode });
+  };
+  const ui = boot({ withSettingsScope: true, fetchImpl });
+  const card = ui.render(CARD_SLOT, [undefined, true]);
+  await tick();
+  ui.render(SELECT_SLOT, [undefined, true]);
+  await tick();
+  check(toolbarLabel(ui.render(SELECT_SLOT, [undefined])).text === ui.dictionaries[NS].zh["mode.ask"], "a session without its own mode starts on the default");
+
+  const radios = findBy(card, (node) => node.props?.role === "radio");
+  radios.find((node) => collectText(node).join("") === ui.dictionaries[NS].zh["item.bypass"])?.props?.onClick?.();
+  await tick();
+  await tick();
+  check(
+    toolbarLabel(ui.render(SELECT_SLOT, [undefined])).text === ui.dictionaries[NS].zh["mode.bypass"],
+    "changing the default moves a session that follows it, without a reload"
+  );
+}
+
+// 8: a failed read leaves the value UNKNOWN — never the schema default.
 {
   const ui = boot({ withSettingsScope: true, fetchImpl: () => Promise.reject(new Error("host unreachable")) });
-  ui.render(SELECT_SLOT, [undefined]); // mount: starts the (failing) read
+  ui.render(SELECT_SLOT, [undefined]); // mount: starts the (failing) reads
   await tick();
   const card = ui.render(CARD_SLOT, [undefined, true]);
   const radios = findBy(card, (node) => node.props?.role === "radio");
-  check(radios.length === 2 && radios.every((node) => node.props["aria-checked"] === false), "after a failed read the card marks no option");
+  check(radios.length === 3 && radios.every((node) => node.props["aria-checked"] === false), "after a failed read the card marks no option");
   check(collectText(card).join(" ").includes(ui.dictionaries[NS].zh["card.error"]), "after a failed read the card shows the error line");
 
   const label = toolbarLabel(ui.render(SELECT_SLOT, [undefined]));
   check(label.text === ui.dictionaries[NS].zh["mode.unknown"], "after a failed read the toolbar says the mode is unknown");
   check(label.trigger.props.disabled === true, "after a failed read the toolbar is not switchable");
+  await tick();
 }
 
-// 7: a read overtaken by a selection must not publish its stale value.
+// 9: a read overtaken by a selection must not publish its stale value.
 {
   const reads = [];
   const ui = boot({
@@ -292,16 +369,16 @@ console.log("dsh-approval-mode: client bundle contract");
     fetchImpl: (url, init) => {
       if (init?.method === "POST") return okJson({ ok: true });
       const d = deferred();
-      reads.push(d);
+      reads.push({ url, d });
       return d.promise;
     }
   });
-  const menu = ui.render(SELECT_SLOT, [undefined, true]); // mounts the store; the GET stays pending
+  const menu = ui.render(SELECT_SLOT, [undefined, true]); // mounts the store; the GETs stay pending
   menuitem(menu, ui.dictionaries[NS].zh["item.bypass"])?.props?.onClick?.();
   await tick();
   check(toolbarLabel(ui.render(SELECT_SLOT, [undefined]))?.text === ui.dictionaries[NS].zh["mode.bypass"], "the selection is applied optimistically");
 
-  reads[0].resolve({ ok: true, json: () => Promise.resolve({ ok: true, mode: "ask" }) });
+  reads.find((entry) => entry.url === SESSION_ROUTE).d.resolve({ ok: true, json: () => Promise.resolve({ ok: true, mode: "ask" }) });
   await tick();
   check(
     toolbarLabel(ui.render(SELECT_SLOT, [undefined])).text === ui.dictionaries[NS].zh["mode.bypass"],
@@ -309,7 +386,7 @@ console.log("dsh-approval-mode: client bundle contract");
   );
 }
 
-// 8a: with nothing confirmed, a failed write restores UNKNOWN, not the sibling's optimistic value.
+// 10a: with nothing confirmed, a failed write restores UNKNOWN, not the sibling's optimistic value.
 {
   const posts = [];
   const ui = boot({
@@ -334,7 +411,7 @@ console.log("dsh-approval-mode: client bundle contract");
   );
 }
 
-// 8b: a superseded write that SUCCEEDED is the restore point for a later failure.
+// 10b: a superseded write that SUCCEEDED is the restore point for a later failure.
 {
   const posts = [];
   const ui = boot({
@@ -359,7 +436,7 @@ console.log("dsh-approval-mode: client bundle contract");
   );
 }
 
-// 8c: out-of-order responses — only the NEWEST success may set the restore point.
+// 10c: out-of-order responses — only the NEWEST success may set the restore point.
 {
   const posts = [];
   const ui = boot({
@@ -387,11 +464,12 @@ console.log("dsh-approval-mode: client bundle contract");
   );
 }
 
-// 5: every key a surface asked for exists in both languages.
+// 7: every key a surface asked for exists in both languages.
 {
   const ui = boot({ withSettingsScope: true, fetchImpl: () => okJson({ ok: true, mode: "ask" }) });
   ui.render(CARD_SLOT, [undefined, true]);
   ui.render(SELECT_SLOT, [undefined, true]);
+  await tick();
   const zh = ui.dictionaries[NS]?.zh ?? {};
   const en = ui.dictionaries[NS]?.en ?? {};
   const missing = asked.filter((key) => zh[key] === undefined || en[key] === undefined);
