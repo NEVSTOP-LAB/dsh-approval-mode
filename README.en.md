@@ -31,9 +31,9 @@ The approval mode is **two values**, each with its own entry point:
 | Entry point | Where | Scope |
 | --- | --- | --- |
 | Approval-mode button | Composer toolbar, next to the permission selector | **The current session**: no other session is affected |
-| Configuration card | Settings → Plugins → Plugin configuration | **The default**: used by sessions opened from now on; running sessions are unaffected |
+| Configuration card | Settings → Plugins → Plugin configuration | **The default**: sessions without a mode of their own follow it, running ones included; a session already given its own mode on the button is unaffected |
 
-The toolbar button never rewrites the default, and the card never touches the current session: change the default on the card, wave one session through with the button.
+The toolbar button never rewrites the default, and the card's default only moves the sessions that have no mode of their own: change the default on the card, wave one session through with the button.
 Both values are written to `settings.yaml`, applied immediately and persisted.
 
 ## Install
