@@ -1,11 +1,14 @@
 # DSH-Approval-Mode
 
-An approval mode plugin for DSH. Adds an "approval mode" button next to the permission selector (Read Only / Workspace Write / Full Access) in the DSH window. Keep the permission at **Workspace Write** and pick "Bypass approval" — tool calls are auto-approved, while file operations stay sandboxed to the workspace, safer and more convenient than Full Access.
+An approval mode plugin for DSH. Adds an "approval mode" button next to the permission selector (Read Only / Workspace Write / Full Access) in the DSH window. Keep the permission at **Workspace Write** and pick "Bypass, escalations excepted" — tool calls are auto-approved, while file operations stay sandboxed to the workspace, safer and more convenient than Full Access.
 
 > [!IMPORTANT]
-> "Bypass approval" **auto-approves every tool call**, including file modifications and external commands. There is no confirmation prompt at all.
-> Use it only when you fully trust the current task, and switch back to "default approval" when done.
-> When the session permission is Full Access, DSH never issues approval requests, so this mode has no effect.
+> Both bypass modes **auto-approve tool calls**; ordinary operations show no confirmation prompt.
+> - **Bypass, escalations excepted**: ordinary tool calls pass through; **writing outside the workspace, or any command that needs a wider sandbox, still prompts** and the one-shot grant is yours to give.
+> - **Bypass approval**: escalations are auto-approved too, so the sandbox boundary opens with everything else (high risk).
+>
+> Use them only when you fully trust the current task, and switch back to "default approval" when done.
+> When the session permission is Full Access, DSH never issues approval requests, so these modes have no effect.
 
 <img width="998" height="169" alt="image" src="https://github.com/user-attachments/assets/76763839-e8c1-4dcf-9a4f-00d94b5110b3" />
 
@@ -13,21 +16,25 @@ An approval mode plugin for DSH. Adds an "approval mode" button next to the perm
 
 - The button sits in the composer toolbar next to the permission selector, styled like the permission control
 - **Default approval**: identical to stock DSH — tool calls require a click to approve
-- **Bypass approval**: every tool call is auto-approved, no clicks needed
-- Changes apply immediately and persist across restarts
-- The button turns orange in bypass mode
+- **Bypass, escalations excepted**: tool calls are auto-approved; widening the sandbox to write outside the workspace still prompts you
+- **Bypass approval**: every tool call is auto-approved, escalations included, with no prompt at all (high risk)
+- Changes apply immediately and persist per session
+- The button turns orange in either bypass mode: a hollow shield for escalations-excepted, a bolt for full bypass
 - With Full Access permission, the button is greyed out and shows "绕过审批": DSH never issues approval requests, so the mode cannot be switched
-- Switching mode notifies the agents in live sessions
+- Switching mode notifies the agent of that session
 - Settings → Plugins → **Plugin configuration** carries this plugin's card, where the default approval mode for opened sessions is set
 
 ## Configuration
 
-The approval mode has **two** entry points and they write the same setting (global, applied immediately, persisted to `settings.yaml`):
+The approval mode is **two values**, each with its own entry point:
 
-| Entry point | Where | For |
+| Entry point | Where | Scope |
 | --- | --- | --- |
-| Approval-mode button | Composer toolbar, next to the permission selector | Switching the current session on the fly |
-| Configuration card | Settings → Plugins → Plugin configuration | Setting the default mode sessions open with |
+| Approval-mode button | Composer toolbar, next to the permission selector | **The current session**: no other session is affected |
+| Configuration card | Settings → Plugins → Plugin configuration | **The default**: used by sessions opened from now on; running sessions are unaffected |
+
+The toolbar button never rewrites the default, and the card never touches the current session: change the default on the card, wave one session through with the button.
+Both values are written to `settings.yaml`, applied immediately and persisted.
 
 ## Install
 
