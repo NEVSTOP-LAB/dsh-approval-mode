@@ -1,7 +1,7 @@
 {
   "name": "dsh-approval-mode",
   "version": "0.1.2",
-  "description": "Approval mode control for DeepSeek Harness: default approval (ask) or bypass approval (auto-approve every tool call), next to the permission selector. DSH 审批模式插件。",
+  "description": "Approval mode control for DeepSeek Harness: default approval, bypass approval, or bypass that still asks before a sandbox escalation, next to the permission selector. DSH 审批模式插件。",
   "keywords": [
     "dsh",
     "deepseek-harness",
