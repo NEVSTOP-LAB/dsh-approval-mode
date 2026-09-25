@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-25
+
 ### 修复
 
 - **0.1.4 会让会话写入失败：每一轮都报 `format v4 message requires a producer-owned source kind`。**
