@@ -104,7 +104,9 @@ node scripts/check-host.mjs
 7. 默认写入按**插件自己的 loader entry id** 走 settings 服务；
 8. 控制路由的地址语义（无 `session` = 默认值，`?session=` = 该会话），
    以及非回环 403、非法 mode 400、坏 JSON 400、非法 session 地址 400、错误方法 405；
-9. 坏会话文件退化为空、写入即修复；宿主侧 live 配置变更只通知一次。
+9. 坏会话文件退化为空、写入即修复；宿主侧 live 配置变更只通知一次；
+10. **注入的通知消息带 producer 自有的 source kind**（不是退役的 `{kind:"plugin"}`）——
+    这是会话格式 v4 的写入准入规则，违反它会让该会话之后每一轮都失败（§4.1 的 0.1.5 记录）。
 
 打桩替换的是库，不是被测代码：`index.js` 是磁盘上那一份，只有它的 import 被改写。
 
@@ -121,9 +123,11 @@ node scripts/check-host.mjs
 - 把 host 的 `inject` 改回 `["settings", "webServer"]` 并在 `apply` 开头直接调
   `ctx.settings.register`（0.1.4 之前的写法），`check-host.mjs` 应报 4 条 `FAIL`，其中
   「a settings service WITHOUT register (0.1.7+) mounts the plugin instead of throwing」
-  就是 DSH 0.1.7 上的真实回归。
+  就是 DSH 0.1.7 上的真实回归；
+- 把注入消息的 `source` 改回 `{ kind: "plugin", plugin: "approval-mode" }`，`check-host.mjs`
+  应报 2 条 `FAIL`（v4 source 准入与 producer kind 一致），这正是 0.1.4 的回归。
 
-四条均已实测（2026-09-22 / 2026-09-25），确认后改回。
+六条均已实测（2026-09-22 / 2026-09-25），确认后改回。
 
 ### 2.4 端到端验证（可选）
 
@@ -241,6 +245,7 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
    | `ctx.on("approval/request", fn, true)`（prepend） | `@deepseek-ai/dsh-user-approval`（`ctx.waterfall`） |
    | `reason` 前缀 `escalate sandbox to <mode>: ` | `@deepseek-ai/dsh-sandbox`（`approveEscalation`） |
    | `createUserMessage` | `@deepseek-ai/dsh-llm` 导出表 |
+   | 注入消息的 `source.kind` 必须是 producer 自有值，不能是 `"plugin"` | `@deepseek-ai/dsh-session-format-v3-to-v4`（`assertV4RowAdmission`，会话格式 v4 写入准入） |
    | `ctx.get("dshHomePath")(…)`（插件自有状态目录） | `@deepseek-ai/dsh-home-paths`（app-boot 提供） |
    | `slots.register({…, locale})` → 组件 `props.t` | `@deepseek-ai/dsh-client-ui-renderer`（locale seat） |
    | `props.useProjection("permissions")` | standard props |
@@ -279,6 +284,13 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
   反向验证 4 条 FAIL（§2.3）。接口依据：`dsh-settings` 的 `SettingsForms`、
   `cordis-plugin-loader` 的 `_commitVolatile`/`loader/volatile-update`、
   `dsh-config-editor` 的 `configuration()`、`dsh-web-app/cordis.patch.yml` 里 `locale` entry id。
+- **0.1.7-rc.1 热修（0.1.5，撤回 0.1.4）— 通过。** 0.1.4 修好挂载后暴露下一个契约变化：
+  注入消息的 v3 source 包装 `{ kind: "plugin", plugin: "approval-mode" }` 被会话格式 v4 拒绝
+  （`SessionFormatError: format v4 message requires a producer-owned source kind`），
+  症状是该会话之后每一轮 `agent turn failed`（宿主日志 `[dsh-agent-error]`、
+  `[jsonl-session-persistence] background write … failed`）。修复为 `{ kind: "dsh-approval-mode" }`；
+  用真实 `assertV4RowAdmission` 复核旧包装被拒、新常量通过；坏事件未落盘，重启即恢复。
+  0.1.4 的 Release 与 tag 已撤回。
 - 更早版本（0.1.0-rc.x / 0.1.1-rc.x）的验证记录见 doc/design.md §5.1–§5.2。
 
 ## 5. 打包与发版
