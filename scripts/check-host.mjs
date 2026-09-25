@@ -360,6 +360,22 @@ function boot(options = {}) {
   };
 }
 
+/**
+ * The session-format V4 admission rule every durable message source must pass.
+ *
+ * Measured against @deepseek-ai/dsh-session-format-v3-to-v4 0.1.7-rc.1, whose
+ * assertV4RowAdmission throws exactly this message for the retired wrapper
+ * `{ kind: "plugin", plugin: … }`. Reproduced here so a regression fails
+ * offline, where the host would instead fail every later turn of the session.
+ * @param message - the message a plugin injected.
+ */
+function assertProducerOwnedSource(message) {
+  const source = message === null || message === undefined ? undefined : message.source;
+  if (source === null || typeof source !== "object" || typeof source.kind !== "string" || source.kind.length === 0 || source.kind === "plugin") {
+    throw new Error("format v4 message requires a producer-owned source kind");
+  }
+}
+
 /** A request as approveEscalation() sends it. */
 const escalation = (sessionId) => ({
   agent: { session: { id: sessionId } },
@@ -386,6 +402,7 @@ console.log("dsh-approval-mode: host contract");
   check(field !== undefined, "the plugin declares a Config carrying the default mode");
   check(field?.isVolatile === true, "the default mode is a live (volatile) config field");
   check(field?.fallback() === "ask", "the config field defaults to ask");
+  check(host.MESSAGE_SOURCE?.kind === host.name, "the injected message source carries the plugin's own producer kind");
 }
 
 // 2: what counts as an escalation.
@@ -586,6 +603,14 @@ console.log("dsh-approval-mode: host contract");
   await ui.request({ method: "POST", url: host.ROUTE_PATH + "?session=one", body: JSON.stringify({ mode: "bypass" }) });
   check(injected.length === 1 && injected[0].id === "one", "a per-session change notifies that session only");
   check(injected[0].message?.content?.[0]?.text?.includes("绕过审批"), "the notice states the mode in the user's language");
+  check(injected.every((entry) => {
+    try {
+      assertProducerOwnedSource(entry.message);
+      return true;
+    } catch {
+      return false;
+    }
+  }), "the injected notice passes session-format v4 source admission");
   injected.length = 0;
   await ui.request({ method: "POST", body: JSON.stringify({ mode: "bypass" }) });
   check(injected.length === 1 && injected[0].id === "two", "a default change notifies the sessions that follow the default, once");
@@ -600,6 +625,7 @@ console.log("dsh-approval-mode: host contract");
   await ui.request({ method: "POST", body: JSON.stringify({ mode: "bypass" }) });
   check(injected.length === 1, "the route's own default write notifies exactly once (the loader event is not a second notice)");
   check(injected[0].message?.content?.[0]?.text?.includes("bypass approval"), "the notice follows the locale entry's preference on the new generation");
+  check(injected[0]?.message?.source?.kind === host.MESSAGE_SOURCE.kind, "the 0.1.7+ notice carries the same producer-owned source");
 }
 
 // 15: the store's home resolution.

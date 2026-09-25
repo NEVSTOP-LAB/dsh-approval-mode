@@ -407,6 +407,32 @@ function`（实测：宿主日志 `dsh-2026-09-25.log` 第 3 行，`DSH Desktop 
   `GET /approval-mode` 200、写默认值落到 profile patch 的 `config.defaultMode`、写会话落到
   `sessions.json`、重启后两者都在，且默认值写入**没有**产生第二次挂载行（volatile 就地更新）。
 
+### 5.6 会话格式 v4 的 source 准入（0.1.5 修复 0.1.4 的回归）
+
+0.1.4 修好挂载之后暴露了下一个 0.1.7 契约变化：**注入消息的 `source` 必须带 producer 自有的
+kind**。会话格式 v4 的 `assertV4RowAdmission` 明确拒绝退役的 v3 包装 `{ kind: "plugin", … }`：
+
+```
+SessionFormatError: format v4 message requires a producer-owned source kind
+```
+
+旧版插件注入通知时用的正是那个包装，于是：注入成功进入会话 → 会话写入被拒（
+`jsonl-session-persistence` 的 background write 失败、事件留在内存缓冲）→ **该会话之后每一轮
+都在 step 0 失败**（`[dsh-agent-error] agent turn failed`），标题生成与投影缓存一起失败。
+0.1.4 之前插件在 0.1.7 上不挂载，这条路径从未执行，所以 0.1.4 是它第一次真正运行。
+
+- **修复**：
+  `MESSAGE_SOURCE = Object.freeze({ kind: name })`（`name` 是本插件导出的名字
+  `dsh-approval-mode`）。这是格式 v4 的原生形态——第一方 producer 同样以自身名字作 kind
+  （`cordis-host-runner`、`dsh-session-title-llm`），而宿主自己的 v3→v4 迁移会把 legacy
+  `plugin` source 变成 `plugin:<name>` 或已知 producer 名。
+- **证据**：以真实宿主代码 `assertV4RowAdmission`（0.1.7-rc.1）验证：
+  `{ kind: "plugin", plugin: "approval-mode" }` 被拒且错误文本与线上一致；
+  插件常量 `{ kind: "dsh-approval-mode" }` 通过。离线侧由 `scripts/check-host.mjs` 的两条新断言
+  守（改回旧包装 ⇒ 2 条 FAIL）。
+- **恢复**：坏事件从未落盘（v4 会话文件与投影缓存都没有 `"kind":"plugin"`），重启即恢复。
+- **发布处理**：0.1.4 的 Release 与 tag 已撤回，改用 0.1.5。
+
 ## 6. 已知边界与后续
 
 - 改默认值会立即改变**没有自己模式**的会话的生效模式（含正在运行的会话，Host 每次请求都重新解析，

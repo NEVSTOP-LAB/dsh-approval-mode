@@ -70,6 +70,24 @@ export const inject = ["webServer"];
 /** Settings namespace holding the approval modes (DSH <= 0.1.6). */
 export const NS = "approval-mode";
 
+/**
+ * Producer kind this plugin stamps on the messages it injects.
+ *
+ * DSH 0.1.7's session format v4 admits only a PRODUCER-OWNED source kind and
+ * refuses the retired wrapper `{ kind: "plugin", plugin: … }` outright:
+ *
+ *   SessionFormatError: format v4 message requires a producer-owned source kind
+ *
+ * That is exactly how a mounted model turn failed after 0.1.4: the notification
+ * this plugin injects carried the v3 wrapper, the session writer refused it, and
+ * every later turn of that session failed with the same error. The current shape
+ * is the producer's own name — the same convention first-party producers use
+ * (`cordis-host-runner`, `dsh-session-title-llm`), and what the harness's own
+ * v3→v4 migration turns a plugin source into. It reads the exported plugin
+ * {@link name} so the two cannot drift.
+ */
+export const MESSAGE_SOURCE = Object.freeze({ kind: name });
+
 /** DSH's stock behaviour: every tool call that asks goes to the user. */
 export const ASK = "ask";
 
@@ -589,11 +607,13 @@ export function apply(ctx, config) {
         // Use createUserMessage so the message carries a stable identity (id)
         // and is frozen first — DSH 0.1.1-rc.2+ validates message identity at
         // the session seed/load boundary and a raw object would fail resume.
+        // The source must be a producer-owned kind (see MESSAGE_SOURCE): the v3
+        // `{ kind: "plugin" }` wrapper is refused by format v4 at session write.
         agent.inject(createUserMessage({
           content: [{ type: "text", text: en
             ? `The approval mode of this session was switched by the user to "${modeSentence(mode, true)}".`
             : `本会话的审批模式已由用户切换为「${modeSentence(mode, false)}」。` }],
-          source: { kind: "plugin", plugin: "approval-mode" }
+          source: MESSAGE_SOURCE
         }));
       } catch (err) {
         console.error("[dsh-approval-mode] agent notify error:", err);

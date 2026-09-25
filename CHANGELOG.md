@@ -10,6 +10,36 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **0.1.4 会让会话写入失败：每一轮都报 `format v4 message requires a producer-owned source kind`。**
+  现象：切换审批模式之后，该会话之后每一轮都失败（宿主日志
+  `[jsonl-session-persistence] background write … failed`、
+  `[dsh-agent-error] agent turn failed … SessionFormatError: format v4 message requires a
+  producer-owned source kind`），标题生成、投影缓存写入一并失败。
+
+  - **原因**：通知在线代理的那条注入消息沿用了 v3 的 source 包装
+    `{ kind: "plugin", plugin: "approval-mode" }`。0.1.7 的会话格式 v4 只接受 **producer 自有**的
+    source kind，并明确拒绝 `plugin`（`@deepseek-ai/dsh-session-format-v3-to-v4` 的
+    `assertV4RowAdmission`）。0.1.4 之前插件在 0.1.7 上根本不挂载，这条注入路径从未被执行到；
+    0.1.4 修好挂载后它才第一次运行。
+  - **修复**：source 改为插件自己的 producer kind `{ kind: "dsh-approval-mode" }` —— 与第一方
+    producer（`cordis-host-runner`、`dsh-session-title-llm`）同一约定，也正是宿主自己的 v3→v4
+    迁移会把 legacy plugin source 变成的形态。
+  - **影响面与恢复**：只在**切换审批模式**（通知在线代理）时触发；坏事件被会话写入拒绝，
+    没有落到磁盘（v4 会话文件与投影缓存均无 `"kind":"plugin"`），重启 DSH 即恢复。
+
+- **0.1.4 已撤回**：GitHub Release 与 tag `v0.1.4` 均已删除（它把上述回归带进了正式发布）。
+  请使用 0.1.5。
+
+### 验证
+
+- `scripts/check-host.mjs` 新增两条断言：「注入的消息通过 session-format v4 的 source 准入」
+  「通知携带插件自己的 producer kind」；把 source 改回 `{kind:"plugin"}` ⇒ 2 条 FAIL（实测）。
+- 用真实宿主代码复核：以 `@deepseek-ai/dsh-session-format-v3-to-v4@0.1.7-rc.1` 的
+  `assertV4RowAdmission` 对**插件自己的常量**取值——旧包装被拒（错误文本与线上一致），
+  新常量通过。
+
 ## [0.1.4] - 2026-09-25
 
 ### 修复
