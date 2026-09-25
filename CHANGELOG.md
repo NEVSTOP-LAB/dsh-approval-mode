@@ -10,6 +10,48 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **DSH 0.1.7 起插件不挂载，按钮显示「审批模式未知」。** DSH 0.1.7 把 settings 服务从
+  「插件注册命名空间 + settings 文档」换成了「插件 Config + profile patch 配置表单」：
+  `ctx.settings.register` 已不存在。旧版 `index.js` 在 `apply` 第一行就抛
+  `TypeError: ctx.settings.register is not a function`，宿主半根本没挂载 ⇒
+  `/approval-mode` 控制路由不存在 ⇒ 浏览器读设置失败（落到 SPA fallback）⇒
+  store 置 `known=false` ⇒ 工具栏按钮与插件页卡片都显示「审批模式未知」。修复后的分工：
+
+  - **默认模式 = 本插件自己的配置字段** `Config.defaultMode`（`.volatile()`）。
+    0.1.7+ 由宿主按 Config schema 在「设置 → 插件」自动渲染表单读写，改值只更新引用、
+    不重挂插件；0.1.6 及更早的宿主没有这套投影，仍走原来的 `approval-mode`
+    settings 命名空间（该服务存在时注册并读写）。
+  - **按会话模式改存插件自有文件** `$DSH_HOME/approval-mode/sessions.json`（原子写入：
+    临时文件 + rename）。0.1.7+ 的 settings 服务只能编辑插件 Config，按会话的运行期状态
+    不该进 profile patch；该文件首次加载时会把旧 settings 文档里的 `sessions` 映射
+    迁移过来，之后不再读它。
+  - **`inject` 不再要求 settings 服务**：只要求 `webServer`。settings 通过
+    `ctx.inject` 可选接入，因此两代 settings 服务、以及完全没有 settings 服务的组合
+    都能挂载（应答器 + 控制路由 + 会话存储照常）。
+
+- **升级提示**：0.1.7 已弃用旧的 settings 文档通道（`settings.yaml` 被改名成
+  `settings.yaml.imported`），升级前写在 `approval-mode` 命名空间里的**默认模式**
+  在 0.1.7+ 无法再读取——请在「设置 → 插件 → dsh-approval-mode」重新选一次默认模式。
+  按会话的模式由插件自动迁移，无需手动处理。
+
+### 变更
+
+- **`@deepseek-ai/dsh-settings` 不再作为 peer 声明**：插件不再 import 该包（只使用宿主
+  注入的 settings 服务，且两代服务都兼容）。peer 范围只剩 `@deepseek-ai/cordis`、
+  `@deepseek-ai/dsh-llm`、`@deepseek-ai/schemastery`、`react`。
+
+### 验证
+
+- `npm run check`：`scripts/check-host.mjs` 重写并覆盖两代 settings 服务——新增断言含
+  「没有 `register` 的 settings 服务能挂载（本次回归）」「live config 引用决定默认值」
+  「默认写入按插件自己的 loader entry id 走 settings 服务」「会话映射跨重启存活」
+  「坏文件退化为空、写入时修复」「旧文档的 sessions 一次性迁移」「宿主侧 volatile 变更只通知一次」。
+  逐条反向验证：把 `inject` 与 `ctx.settings.register` 恢复成旧写法，该脚本报 4 条
+  `FAIL`（含「能挂载而不抛异常」），确认后改回。
+- 真实宿主实测（DSH Desktop 2.0.14 / DSH 0.1.7-rc.1）见 CONTRIBUTING §4.1。
+
 ## [0.1.3] - 2026-09-22
 
 ### 新增

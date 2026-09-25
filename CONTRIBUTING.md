@@ -26,8 +26,8 @@ dsh-approval-mode/
 ├── doc/design.md        # 设计文档：架构与关键机制
 ├── package.json         # bundle manifest（dsh.bundle + dsh.client + engines.dsh + peer 版本要求）
 ├── cordis.patch.yml     # 组合层：插入插件行
-├── index.js             # Host half（审批应答器 + settings + 控制路由 + 代理通知）
-├── lib/client.js        # Client half（工具栏控件 + 插件页配置卡片）
+├── index.js             # Host half（审批应答器 + Config/既有 settings 兼容 + 控制路由 + 代理通知）
+├── lib/client.js        # Client half（工具栏控件 + <=0.1.6 的插件页配置卡片）
 └── scripts/
     ├── dshClient.js     # 轻量 DSH 回环 API 客户端（HTTP + WebSocket，自包含）
     ├── listen-only.mjs  # 审批帧监听验证脚本（不应答）
@@ -37,9 +37,10 @@ dsh-approval-mode/
     └── pack.mjs         # 跨平台打包（npm pack → dist/）
 ```
 
-分两半：Host（`index.js`，注册 settings 命名空间 `approval-mode`、`approval/request`
-应答器、`GET/POST /approval-mode` 控制路由）与 Client（`lib/client.js`，
-`window.__ModuleLoader__` bundle）。设计细节见 doc/design.md §2–§3。
+分两半：Host（`index.js`，默认模式声明为插件 `Config.defaultMode`、在旧宿主上兼容
+`approval-mode` settings 命名空间、`approval/request` 应答器、会话模式文件、
+`GET/POST /approval-mode` 控制路由）与 Client（`lib/client.js`，`window.__ModuleLoader__`
+bundle）。设计细节见 doc/design.md §2–§3。
 
 ## 2. 本地开发与检查
 
@@ -90,14 +91,20 @@ node scripts/check-host.mjs
 `module.registerHooks` 为这两个说明符提供进程内打桩，加载**真实的 `index.js`**，并用
 假的 settings / webServer / agents 上下文断言：
 
-1. 模式词汇就是 client 侧提供的三个值；
+1. 模式词汇就是 client 侧提供的三个值，且 `Config` 把默认模式声明成实时（volatile）字段；
 2. 提权按 `dsh-sandbox` 真正发出的 reason 前缀识别，且不误判普通审批；
 3. 每个模式的应答结果：`ask` 全部委派、两种绕过都自动放行、**只有**
    `bypass-except-escalation` 把提权交回用户；
-4. 模式按会话解析，默认值兜底；
-5. 0.1.2 及更早写的全局 `mode` 升级后仍然决定默认值（settings.yaml 迁移）；
-6. 控制路由的地址语义（无 `session` = 默认值，`?session=` = 该会话），
-   以及非回环 403、非法 mode 400、坏 JSON 400、非法 session 地址 400、错误方法 405。
+4. 模式按会话解析、默认值兜底，且会话映射**跨重启存活**（写入 `$DSH_HOME/approval-mode/
+   sessions.json`）；
+5. **两代 settings 服务**：<=0.1.6 的 `register/get/update` 命名空间与 0.1.7+ 的
+   `describe/update` 配置表单都覆盖到——后者**没有 `register`**，正是本次回归（旧代码在此
+   抛 `TypeError` 导致宿主半不挂载）；另外覆盖「完全没有 settings 服务」的组合；
+6. 0.1.2 及更早写的全局 `mode`、以及旧文档里的 `sessions`，升级后仍被读取并迁移；
+7. 默认写入按**插件自己的 loader entry id** 走 settings 服务；
+8. 控制路由的地址语义（无 `session` = 默认值，`?session=` = 该会话），
+   以及非回环 403、非法 mode 400、坏 JSON 400、非法 session 地址 400、错误方法 405；
+9. 坏会话文件退化为空、写入即修复；宿主侧 live 配置变更只通知一次。
 
 打桩替换的是库，不是被测代码：`index.js` 是磁盘上那一份，只有它的 import 被改写。
 
@@ -110,9 +117,13 @@ node scripts/check-host.mjs
 - 把工具栏的写地址从 `routeUrl(sessionId)` 改回 `ROUTE_PATH`，应报
   `FAIL the picker writes the SESSION address`；
 - 把 `bypass-except-escalation` 的提权分支改回 `return "allowed-once"`，`check-host.mjs`
-  应报 2 条 `FAIL`（提权豁免与按会话豁免）。
+  应报 2 条 `FAIL`（提权豁免与按会话豁免）；
+- 把 host 的 `inject` 改回 `["settings", "webServer"]` 并在 `apply` 开头直接调
+  `ctx.settings.register`（0.1.4 之前的写法），`check-host.mjs` 应报 4 条 `FAIL`，其中
+  「a settings service WITHOUT register (0.1.7+) mounts the plugin instead of throwing」
+  就是 DSH 0.1.7 上的真实回归。
 
-三条均已实测（2026-09-22），确认后改回。
+四条均已实测（2026-09-22 / 2026-09-25），确认后改回。
 
 ### 2.4 端到端验证（可选）
 
@@ -146,17 +157,24 @@ README 只复述结论，判定依据是本表。
 | --- | --- | --- |
 | `engines.dsh` | `^0.1.1-rc.2` | 宿主版本下界；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
 | `@deepseek-ai/dsh-llm` | `^0.1.1-rc.2` | `createUserMessage`：稳定消息标识自 0.1.1-rc.2 起必需，低于它的宿主会让会话恢复失败（见已关闭的 #1） |
-| `@deepseek-ai/dsh-settings` | `^0.1.1-rc.2` | settings 服务的 `register/get/update`；与 dsh-llm 对齐到同一条 DSH 核心版本线 |
 | `@deepseek-ai/cordis` | `^4.0.1` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
 | `@deepseek-ai/schemastery` | `^3.18.1` | namespace schema（`object` / `union` / `dict`） |
 | `react` | `^18.2.0` | client bundle（宿主 seed 模块提供） |
 
-### 3.2 为什么上界不设
+`@deepseek-ai/dsh-settings` **不再声明**（0.1.4 起）：插件不 import 该包，只用宿主注入的
+settings 服务，且两代契约都兼容——<=0.1.6 的 `register/get/update` 与 0.1.7+ 的
+`describe/update`（配置表单）。声明一个不再被 import 的包，只会给浏览期兼容性判定错误的信号。
 
-caret 只界到 `0.2.0`，不写显式上界：插件只使用**稳定的公开服务**——`settings`、
-`webServer`、`approval/request` 水瀑布、slot 座位——不依赖内部符号。这正是
-doc/design.md §2.1 放弃 settings RPC 白名单与 typert Remote 的收益：宿主升级到更新的
-0.1.x 时，插件不需要跟着改。
+### 3.2 为什么上界不设（以及 0.1.7 的教训）
+
+caret 只界到 `0.2.0`，不写显式上界：插件只使用**公开服务**——`settings`、`webServer`、
+`approval/request` 水瀑布、slot 座位——不依赖内部符号。
+
+但 2026-09 的 DSH 0.1.7 说明「公开」不等于「契约不变」：settings 服务被整体换成
+「插件 `Config` + profile patch 配置表单」，`register`/`get` 消失，旧代码在 `apply` 第一行
+就抛 `TypeError`（§4.1）。插件因此不再把 settings 当**必选**服务（`inject` 只要求
+`webServer`），改用 `ctx.inject` 按能力接入两代实现；真正没变的两个接口——控制路由与
+审批水瀑布——保持原样。结论：宿主换代时按 §4 逐 API 对照，不要因为服务名没变就假设契约没变。
 
 ### 3.3 为什么共享宿主包只放 peerDependencies，且标成 optional
 
@@ -194,16 +212,17 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 必须一致：工作流会校验前两者，`scripts/release-notes.mjs` 用第三者组装 Release 正文
 （缺失时退化为提交列表）。流程见 §5。
 
-### 3.5 配置卡片的额外依赖，以及它为什么不进 README
+### 3.5 设置页那张卡片的依赖，以及它为什么不进 README
 
-配置卡片需要宿主的客户端 `settingsScope` 服务（由 `@deepseek-ai/dsh-client-ui-settings`
-提供，0.1.0-rc.7 起）。该下界**低于**本插件声明的 DSH 下界 `0.1.1-rc.2`，因此在所有
-**受支持**的宿主上卡片都可用——README 因此只声明版本下界，不再描述「旧宿主少一张卡片」
-这种落在支持范围之外的情形。
+<=0.1.6 的插件页配置卡片需要宿主的客户端 `settingsScope` 服务（由
+`@deepseek-ai/dsh-client-ui-settings` 提供）。该下界**低于**本插件声明的 DSH 下界
+`0.1.1-rc.2`，因此在受支持的 0.1.1–0.1.6 宿主上卡片都可用。
 
-降级路径仍然存在，且由 `scripts/check-client.mjs` 断言：它覆盖的是**组装层没有引入
-`dsh-client-ui-settings`** 的非常规组合（版本够新、客户端少了该服务）。此时只有卡片不出现，
-工具栏按钮与绕过审批不受影响。
+0.1.7+ 不再有 `settingsScope`，也不再有 `settings.plugin.item` 槽位：那里的默认模式由宿主
+**按插件 `Config` 自动渲染**（§3.1 的 `Config.defaultMode`），客户端不需要卡片代码。
+`lib/client.js` 仍保留旧卡片注册（嵌套 `ctx.inject(["settingsScope"])`），在 0.1.7+ 上
+只是不注册——这条降级路径由 `scripts/check-client.mjs` 断言：宿主没有该服务时，工具栏按钮
+与绕过审批完全不受影响。
 
 ## 4. 兼容性校验怎么做
 
@@ -213,15 +232,20 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 
    | 插件用法 | 宿主侧位置 |
    | --- | --- |
-   | `ctx.settings.register(ns, schema, {applies})` / `settings.get/update` | `@deepseek-ai/dsh-settings` |
+   | `export const Config` + `.volatile()` 字段 → `apply(ctx, config)` 拿到 `{get()}` 引用 | `@deepseek-ai/schemastery` + `@deepseek-ai/cordis`（`Fiber._commitVolatile`） |
+   | `ctx.on("loader/volatile-update", fn)`（本 fiber 作用域） | `@deepseek-ai/cordis-plugin-loader`（`_commitVolatile` 的 `fiber.ctx.emit`） |
+   | `settings.update(entryId, patch)`、`describe()`（0.1.7+ 配置表单） | `@deepseek-ai/dsh-settings`（`SettingsForms`） |
+   | `configEditor.configuration()` → 按 `fiber.uid` 认领自己的 entry id | `@deepseek-ai/dsh-config-editor` |
+   | `ctx.settings.register(ns, schema, {applies})` / `settings.get/update`（<=0.1.6 兼容分支） | `@deepseek-ai/dsh-settings`（旧命名空间实现） |
    | `ctx.webServer.register({kind:"exact",path,handler})` | `@deepseek-ai/dsh-host-webserver` |
    | `ctx.on("approval/request", fn, true)`（prepend） | `@deepseek-ai/dsh-user-approval`（`ctx.waterfall`） |
    | `reason` 前缀 `escalate sandbox to <mode>: ` | `@deepseek-ai/dsh-sandbox`（`approveEscalation`） |
    | `createUserMessage` | `@deepseek-ai/dsh-llm` 导出表 |
+   | `ctx.get("dshHomePath")(…)`（插件自有状态目录） | `@deepseek-ai/dsh-home-paths`（app-boot 提供） |
    | `slots.register({…, locale})` → 组件 `props.t` | `@deepseek-ai/dsh-client-ui-renderer`（locale seat） |
    | `props.useProjection("permissions")` | standard props |
    | `props.sessionId`（session 作用域座位） | `@deepseek-ai/dsh-client-ui-session`（`BUILTIN_SOURCE`） |
-   | `settings.plugin.item`（keyed slot）+ `settingsScope` | `@deepseek-ai/dsh-client-ui-settings-plugins` / `dsh-client-ui-settings` |
+   | `settings.plugin.item`（keyed slot）+ `settingsScope`（仅 <=0.1.6 的卡片） | `@deepseek-ai/dsh-client-ui-settings-plugins` / `dsh-client-ui-settings` |
 
 2. **确认卡片仍会被派发**：宿主「插件」分区渲染的是
    `describe().namespaces`（被服务的 settings 命名空间）与 `settings.plugin.item`
@@ -233,9 +257,11 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
    `bypass-except-escalation` 退化成普通 `bypass`（§3.1.1）。
 
 4. **留运行时证据**：宿主日志出现 `[dsh-approval-mode] loaded: default mode = …`
-   （挂载成功）与 `hot-mounted`；`$DSH_HOME/settings.yaml` 中出现
-   `approval-mode: { defaultMode: … , sessions: {…} }`（命名空间注册 + 写入通路正常）；
-   `logs/host/*.error.log` 无本插件条目。
+   （挂载成功）与 `hot-mounted`，且**没有** `ctx.settings.register is not a function` 这类
+   `apply` 期异常；`logs/host/*.error.log` 无本插件条目。0.1.7+ 的写入证据是 profile patch
+   （`$DSH_HOME/profiles/<name>/cordis.patch.yml` 里本插件 entry 的 `config.defaultMode`）
+   与会话文件 `$DSH_HOME/approval-mode/sessions.json`；<=0.1.6 仍是 `settings.yaml` 中的
+   `approval-mode:` 小节。
 
 5. **注意误判**：§2.4 的 403 是 DSH Desktop 的浏览器访问围栏，与插件无关。
 
@@ -245,6 +271,14 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
   cordis 4.0.2、schemastery 3.18.2）— 通过。** 上面第 1 步列出的 API 全部一致；
   宿主日志 `hot-mounted dsh-approval-mode` 且无插件错误；`settings.yaml` 中
   `approval-mode` 写入成功；离线契约检查全绿（§2）。
+- **0.1.7-rc.1（DSH Desktop 2.0.14，node v24，共享层 `@deepseek-ai/*` 0.1.7-rc.1、
+  cordis 4.0.4、schemastery 3.18.4）— 修复后通过。** 失败现象与根因：旧版 `index.js` 在
+  `apply` 抛 `TypeError: ctx.settings.register is not a function`（宿主日志
+  `logs/host/dsh-*.log`），宿主半不挂载 ⇒ `/approval-mode` 路由不存在 ⇒ 界面显示
+  「审批模式未知」。修复采用 §3.2 描述的两代兼容结构；离线契约检查全绿（§2），
+  反向验证 4 条 FAIL（§2.3）。接口依据：`dsh-settings` 的 `SettingsForms`、
+  `cordis-plugin-loader` 的 `_commitVolatile`/`loader/volatile-update`、
+  `dsh-config-editor` 的 `configuration()`、`dsh-web-app/cordis.patch.yml` 里 `locale` entry id。
 - 更早版本（0.1.0-rc.x / 0.1.1-rc.x）的验证记录见 doc/design.md §5.1–§5.2。
 
 ## 5. 打包与发版

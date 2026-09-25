@@ -35,16 +35,22 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 ┌────────────────────────────────────────────────────────────┐
 │ DSH Host                                                   │
 │ index.js                                                   │
-│ ├─ settings 服务注册 namespace "approval-mode"             │
-│ │    schema: { defaultMode, sessions{sessionId->mode},     │
-│ │              mode（0.1.2 及更早遗留的全局值） }（持久化）│
+│ ├─ 默认模式 = 插件 Config.defaultMode（.volatile() 实时）   │
+│ │    0.1.7+：宿主按 Config schema 渲染配置表单，写入后就地   │
+│ │            更新引用（不重挂插件）                          │
+│ │    <=0.1.6：走遗留 settings 命名空间 "approval-mode"      │
+│ │    （该服务仍有 register 时注册并读写；遗留 mode 仍可读）  │
+│ ├─ 按会话模式 = $DSH_HOME/approval-mode/sessions.json       │
+│ │    { sessionId -> mode }，原子写入；无文件时一次性迁移旧   │
+│ │    settings 文档里的 sessions 映射                         │
 │ ├─ approval/request 应答器（prepend: true，水瀑布最前端）  │
 │ │    bypass                    -> "allowed-once"           │
 │ │    bypass-except-escalation  -> 提权 next()，其余放行    │
 │ │    ask                       -> next()                   │
 │ ├─ webServer 控制路由 GET/POST /approval-mode（回环校验）  │
 │ │    地址决定对象：无 session=默认值，?session=会话        │
-│ └─ settings/updated 监听 -> 只通知生效模式变了的会话       │
+│ └─ 变更观察：settings/updated（旧）或 loader/volatile-update │
+│      （0.1.7+ 配置表单写入）-> 只通知生效模式变了的会话     │
 └────────────────────────────────────────────────────────────┘
         same-origin fetch（GET/POST /approval-mode[?session=…]）
 ┌────────────────────────────────────────────────────────────┐
@@ -53,7 +59,9 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 │ ├─ 座位 conversation.input.left：「按钮 + 弹出菜单」控件   │
 │ │    读写 props.sessionId 指向的会话（缺失时用默认地址）   │
 │ ├─ 插件页卡片 settings.plugin.item[key=approval-mode]：    │
-│ │    设置 → 插件 → 插件配置 中的配置卡片（读默认值）       │
+│ │    0.1.6 及更早：设置 → 插件 → 插件配置 里的卡片（读默认）│
+│ │    0.1.7+：该槽位已不存在，宿主按 Config 自渲染配置项，    │
+│ │    客户端只保留工具栏控件（嵌套 inject 自动降级）          │
 │ ├─ 每个地址一个 store（useMode），互不冒充                 │
 │ └─ 读写 Host 控制路由（fetch，同源）                       │
 └────────────────────────────────────────────────────────────┘
@@ -71,10 +79,10 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
   插件不再依赖这些内部符号，改走自包含的控制路由，避免与 settings RPC 的
   写入语义耦合。
 - typert Remote 的 client 端 `$mount` 需要编译器生成的严格描述符，手写成本高。
-- **最终方案**：模式仍存 settings 服务（Host 内部读写，不受白名单影响），
-  client 通过 Host 在公开 `webServer` 服务上注册的**控制路由**
-  `GET/POST /approval-mode`（同源 fetch）读写。路由自带回环 Host 校验
-  （防御 `0.0.0.0` 部署）。
+- **最终方案**：`webServer` 控制路由仍是浏览器半读写的唯一通道——它自带回环 Host 校验
+  （防御 `0.0.0.0` 部署），且**不随 settings 服务换代而改变**：0.1.7 换掉了 settings 的
+  存储与写入语义，控制路由的契约一个字节没动。存的两端各自跟随宿主：默认模式是插件
+  Config（0.1.7+）或 settings 命名空间（<=0.1.6），按会话模式是插件自有文件（§3.3）。
 
 ## 3. 关键机制
 
@@ -97,12 +105,17 @@ const answer = ctx.waterfall("approval/request", req, () => "unavailable");
 
 ```js
 ctx.on("approval/request", async (req, next) => {
-  const mode = sessionModeOf(ctx.settings.get(NS), req.agent?.session?.id);
+  const sessionId = req.agent?.session?.id;
+  const stored = sessionModes.get(sessionId);               // 插件自有文件（§3.3）
+  const mode = MODES.includes(stored) ? stored : readDefault();
   if (mode === "bypass") return "allowed-once";
   if (mode === "bypass-except-escalation") return isEscalationRequest(req) ? next() : "allowed-once";
   return next();
 }, true);
 ```
+
+应答器在水瀑布里是**同步**路径：`readDefault()` 读的是内存里的实时引用，会话映射在首次
+读取时一次性同步加载文件，因此这里不出现 `await`。
 
 - `bypass`：直接返回 `allowed-once` —— 链被终结，GUI 应答器不被调用，
   **不会广播 `approval/requested`**，审批提示根本不出现（已验证，见 §5）。
@@ -137,20 +150,30 @@ reason: `escalate sandbox to ${mode}: ${justification}`
 
 ### 3.3 状态模型
 
-- 模式存于 **settings 服务**（namespace `approval-mode`），持久化（settings.yaml），
-  重启后保持。两个值：
-  - **`defaultMode`**：打开会话时使用的默认模式，由插件页配置卡片写。
-  - **`sessions`**：`{ sessionId → mode }`，每个会话自己的模式，由工具栏按钮写。
-  - **`mode`**：0.1.2 及更早版本唯一的全局值，仍然可读；写了 `defaultMode` 之后被遮蔽。
-    这样升级不会丢掉用户已有的设置，也不需要写迁移代码。
-- schema：`z.object({ mode, defaultMode, sessions: z.dict(...).default({}) })`，
-  三个模式值构成封闭词汇；`applies: "live"`（写入立即生效，无需重启）。
-- **解析顺序**：`sessions[sessionId]` → `defaultMode` → 遗留 `mode` → `ask`。
-  `unknown` / 越界值一律回落到 `ask`（fail closed）。
-- Host 应答器每次请求时实时读取 `ctx.settings.get(NS)` 并按请求会话解析，无需事件同步。
-- 模式变更时（`settings/updated` 事件，ns 匹配）逐个比较每个在线代理的
-  **生效模式**前后是否变化，只向真的变了的会话 `inject` 一条用户消息（尽力而为）。
-  改默认值只会通知跟随默认值的会话，改某个会话只通知该会话。
+两个值，**各存各的地方**，因为它们随宿主换代的方式完全不同：
+
+| 值 | 存储 | 谁写 | 0.1.7+ | <=0.1.6 |
+| --- | --- | --- | --- | --- |
+| **默认模式** | 插件 `Config.defaultMode`（`.volatile()`）；旧宿主是 settings 命名空间 `approval-mode` | 宿主配置表单（0.1.7+）／插件页卡片（<=0.1.6） | profile patch，由宿主写入后就地更新引用 | settings.yaml |
+| **按会话模式** | `$DSH_HOME/approval-mode/sessions.json` | 工具栏按钮（控制路由） | 同一份文件 | 同一份文件（首次迁移旧 `sessions`） |
+
+**为什么按会话模式不进 Config**：0.1.7+ 的 settings 服务只能编辑**插件 Config**，而那是
+写进 profile patch 的静态配置；按会话状态以开放的 session id 为键、随会话增减，塞进配置会
+污染 profile patch、每次切换都重写配置文件，语义也不对。运行期状态因此放在插件自有目录，
+**原子写入**（临时文件 + `rename`），读取同步、懒加载一次——应答器在水瀑布里不能 `await`。
+
+- **解析顺序**：会话文件命中 → 默认模式 → `ask`。`unknown` / 越界值一律回落到 `ask`
+  （fail closed）；文件损坏时按空处理并记日志，下一次写入即修复。
+- **默认模式的优先级**：遗留命名空间里的**显式**值（升级前用户的选择，<=0.1.6 宿主仍在写）
+  → live config 引用（0.1.7+）→ 普通 config 值 → `ask`。这样两代宿主、以及只是把
+  `Config` 解析成普通值的老 schemastery，都不会读错来源。
+- **迁移**：文件不存在时，把旧 settings 文档里的 `sessions` 映射一次性搬进文件并落盘；
+  之后不再读它（旧文档里的值保持原样，不做写回）。
+- Host 应答器每次请求时实时读取内存中的引用与映射，无需事件同步。
+- 模式变更时逐个比较每个在线代理的**生效模式**前后是否变化，只向真的变了的会话 `inject`
+  一条用户消息（尽力而为）。改默认值只会通知跟随默认值的会话，改某个会话只通知该会话。
+  变更来源有三处，收敛在同一个观察点、每个变化只通知一次：本插件自己的写入、旧命名空间的
+  `settings/updated`、以及 0.1.7+ 载入器提交 volatile 更新后发出的 `loader/volatile-update`。
 
 ### 3.3.1 控制路由契约
 
@@ -166,8 +189,11 @@ reason: `escalate sandbox to ${mode}: ${justification}`
 回环校验（`isLoopbackRequest`）在读写之前；非法 mode → 400 `invalid-mode`，
 非法 JSON → 400 `bad-json`，其他方法 → 405，非回环 → 403。
 `?session=`（空值）等同于不带该参数，即默认地址。
-session 地址会成为 `sessions` 对象的键，因此 `__proto__` / `constructor` / `prototype`
+session 地址会成为会话映射的键，因此 `__proto__` / `constructor` / `prototype`
 三个会改写原型而不是新增条目的键被拒（400 `invalid-session`）——否则写入会被静默丢弃。
+默认模式在 0.1.7+ 走宿主 settings 服务的 `update(entryId, {defaultMode})`：本插件用
+`configEditor.configuration()` 按 **fiber uid** 认出自己的 loader entry id（不假设包名等于
+entry id），服务缺失或认不出时返回 500 `settings-unavailable`，而不是假装写成功。
 
 ### 3.4 UI 位置与视觉
 
@@ -204,10 +230,17 @@ standard props 注入 `sessionId`（`dsh-client-ui-session` 的 `BUILTIN_SOURCE`
 （受支持宿主不会发生：composer 本身以 `sessionId !== undefined` 为渲染前提）
 控件回落到默认地址，也就是 0.1.2 的行为——这是可用的降级，不是死按钮。
 
-### 3.4.1 插件页配置卡片（设置 → 插件 → 插件配置）
+### 3.4.1 设置页里的默认模式（两代宿主两种呈现）
 
-`@deepseek-ai/dsh-client-ui-settings-plugins` 的「插件」分区把**被服务的 settings
-命名空间**与注册进 `settings.plugin.item` 槽位的卡片做**交集**渲染：
+**DSH 0.1.7+（当前）**：设置页的配置项由宿主**按插件 `Config` 自动渲染**——`settings`
+服务把每个插件 entry 的 Config schema 投影成表单（`configForms`），浏览器侧用 schema-form
+渲染，写入走 `settings.update(entryId, patch)`。因此本插件**不需要任何客户端卡片代码**：
+声明 `Config.defaultMode`（`.volatile()`）就已经在「设置 → 插件」里出现一个下拉框，
+选中即写 profile patch，载入器把新值就地提交进插件持有的引用（`loader/volatile-update`），
+插件不重挂。
+
+**DSH <= 0.1.6（兼容分支）**：宿主「插件」分区把**被服务的 settings 命名空间**与注册进
+`settings.plugin.item` 槽位的卡片做**交集**渲染：
 
 ```js
 // ConfigurablePluginsTabController.publish()
@@ -215,11 +248,8 @@ const served = new Set(describe().namespaces.map((view) => view.ns));
 const namespaces = entries().flatMap((e) => served.has(e.options.key) ? [e.options.key] : []);
 ```
 
-因此卡片能否出现由两件事决定，且两件都成立才渲染：
-
-1. **Host 侧注册了该命名空间**——`ctx.settings.register(NS, …)`；`settings.describe()`
-   在 0.1.1-rc.2 之后返回所有已注册命名空间（无白名单），本插件因此无需额外声明。
-2. **浏览器侧以该命名空间为 `key` 注册卡片**——本插件的 `apply()`：
+两件事都成立才渲染：Host 侧注册了命名空间（`ctx.settings.register(NS, …)`），且浏览器侧
+以该命名空间为 `key` 注册了卡片：
 
 ```js
 ctx.inject(["settingsScope"], (scoped) => {
@@ -229,9 +259,10 @@ ctx.inject(["settingsScope"], (scoped) => {
 ```
 
 **为什么用嵌套 `inject` 而不是模块级 `inject`**：`settingsScope` 由
-`dsh-client-ui-settings` 提供（0.1.0-rc.7 起）。写进模块级 `inject` 会让整个插件
-（包括输入框按钮）在旧宿主上一起不挂载；嵌套 inject 让宿主没有该服务时只是
-**不注册这张卡片**。这条降级路径由 `scripts/check-client.mjs` 断言。
+`dsh-client-ui-settings` 提供；写进模块级 `inject` 会让整个插件（包括输入框按钮）在
+没有该服务的宿主上一起不挂载。嵌套 inject 让 0.1.7+ 宿主（该服务已不存在）只是
+**不注册这张卡片**——那里的默认模式由宿主的 Config 表单承担。这条降级路径由
+`scripts/check-client.mjs` 断言。
 
 **卡片自带全部外观**：分区只提供 `<ul>`，卡片自己画。视觉逐条对齐宿主
 `PluginCard`（`border .5px / radius 16px / header padding 14px 16px / chevron 旋转
@@ -273,8 +304,9 @@ dsh-approval-mode/
   共享包（宿主 `dsh-plugin-desktop` 自身携带），放 `peerDependencies`，由 DSH
   共享依赖层 `$DSH_HOME/profiles/node_modules` 解析，避免在插件的 `node_modules`
   里装独立拷贝而遮蔽宿主版本（本地开发用 `devDependencies` 补齐这两项）；
-  `@deepseek-ai/cordis`、`@deepseek-ai/dsh-settings`、`react` 同样放
-  `peerDependencies`（与 better-sidebar 先例一致）。
+  `@deepseek-ai/cordis` 与 `react` 同样放 `peerDependencies`（与 better-sidebar 先例一致）。
+  `@deepseek-ai/dsh-settings` **不再声明**：插件从 0.1.4 起不 import 该包，只用宿主注入的
+  settings 服务（两代契约都兼容），声明一个不再使用的包会误导兼容性判定。
 - **peer 全部标 `optional`**：profile 的 `pnpm-workspace.yaml` 设了
   `autoInstallPeers: false`，而这些 peer 由上一层共享层提供、pnpm 看不到，因此
   `pnpm peers check` 必然把它们报成 `missing peer`。`peerDependenciesMeta.optional = true`
@@ -350,17 +382,46 @@ peer 为何标 `optional`、以及逐版本校验方法见
 - 反向验证：把提权分支改回 `allowed-once` ⇒ host 检查 2 条失败；把写路径的地址
   换回 `ROUTE_PATH` ⇒ client 检查 1 条失败。
 
+### 5.5 DSH 0.1.7 的 settings 换代（0.1.4 开发期）
+
+0.1.7 把 settings 服务从「插件注册命名空间 + 一个 settings 文档」换成「插件 `Config` +
+profile patch 配置表单」，`register`/`get` 消失、`update(ns, patch)` 的语义变成写插件自身的
+配置。旧版 `index.js` 因此在 `apply` 第一行抛 `TypeError: ctx.settings.register is not a
+function`（实测：宿主日志 `dsh-2026-09-25.log` 第 3 行，`DSH Desktop 2.0.14` / DSH
+`0.1.7-rc.1`），宿主半不挂载 ⇒ 控制路由不存在 ⇒ 按钮显示「审批模式未知」。
+
+- 宿主侧证据：`logs/host/dsh-*.log` 的 `TypeError: ctx.settings.register is not a function`
+  与 `at new apply (…/dsh-approval-mode/index.js:192:16)`；同文件里 `[hmr]` 与 `[dsh-market]
+  hot-mounted` 说明 bundle 本身装载了，失败发生在 `apply`。
+- 接口对照：`@deepseek-ai/dsh-settings@0.1.7-rc.1` 的 `SettingsForms`（`configure` /
+  `describe` / `update` / `replace` / `mutate` / `write`）取代了旧的命名空间注册；插件 `Config`
+  的 `.volatile()` 字段在 `apply(ctx, config)` 里是 `{ get() }` 实时引用，载入器在
+  `_commitVolatile()` 中就地更新并发出 `loader/volatile-update`。
+- `scripts/check-host.mjs` 覆盖两代服务：无 `register` 的服务能挂载、live 引用决定默认值、
+  默认写入按插件自己的 entry id 走 settings 服务、会话映射跨重启存活、坏文件退化并自修复、
+  旧文档 `sessions` 一次性迁移、宿主侧变更只通知一次。
+- 反向验证（2026-09-25，实测）：把 `inject` 与 `ctx.settings.register` 恢复成旧写法 ⇒
+  4 条 FAIL，其中「a settings service WITHOUT register (0.1.7+) mounts the plugin instead
+  of throwing」正是本次回归；确认后改回，全绿。
+- 真实宿主实测（DSH 0.1.7-rc.1，`dsh --profile <临时 profile>`）：插件挂载行出现、
+  `GET /approval-mode` 200、写默认值落到 profile patch 的 `config.defaultMode`、写会话落到
+  `sessions.json`、重启后两者都在，且默认值写入**没有**产生第二次挂载行（volatile 就地更新）。
+
 ## 6. 已知边界与后续
 
 - 改默认值会立即改变**没有自己模式**的会话的生效模式（含正在运行的会话，Host 每次请求都重新解析，
   界面由 `watchDefault` 与重新挂载时的重读跟随）；用工具栏单独设过模式的会话不受默认值影响。
-- 多窗口模式同步：settings/updated 事件 + 各窗口重新读取；同一窗口内每个地址由各自的
-  store 同步，会话 store 另订阅默认 store 以跟随默认值。
-- 会话模式按 session id 永久保存在 `settings.yaml` 的 `sessions` 里，随会话数线性增长，
-  不做过期清理（会话本身是长期可恢复的）。
+- 多窗口模式同步：变更观察事件（旧命名空间的 `settings/updated`、0.1.7+ 的
+  `loader/volatile-update`）驱动通知，各窗口重新读取自己地址的值；同一窗口内每个地址由
+  各自的 store 同步，会话 store 另订阅默认 store 以跟随默认值。
+- 按会话模式按 session id 永久保存在 `$DSH_HOME/approval-mode/sessions.json` 里，随会话数
+  线性增长，不做过期清理（会话本身是长期可恢复的）；单个条目是几十字节。
 - 提权识别依赖 `dsh-sandbox` 的 reason 前缀文本，宿主改拼写即退化为普通 `bypass`
   （§3.1.1）。
-- 插件页卡片依赖宿主客户端 `settingsScope` 服务（0.1.0-rc.7+）：该下界低于本插件声明的
-  DSH 下界，故只影响**未组装 `dsh-client-ui-settings`** 的非常规组合，此时只有卡片不出现
-  （§3.4.1、CONTRIBUTING §3.5）。
+- 0.1.7+ 的默认模式只能经宿主的配置表单修改；本插件的控制路由也支持 `POST /approval-mode`
+  写默认值（走 `settings.update`），但浏览器半在 0.1.7+ 不再渲染那张卡片（§3.4.1）。
+- 升级到 0.1.7+ 后，旧 settings 文档里的**默认模式**无法再读取（宿主的旧文档通道已废弃），
+  需要重设一次；按会话模式自动迁移（§3.3）。
+- 插件页卡片依赖宿主客户端 `settingsScope` 服务（0.1.0-rc.7+）：只影响 <=0.1.6 且
+  **未组装 `dsh-client-ui-settings`** 的非常规组合，此时只有卡片不出现（§3.4.1）。
 - 可发布 npm（`npm publish`）后 `dsh plugin add dsh-approval-mode`。
