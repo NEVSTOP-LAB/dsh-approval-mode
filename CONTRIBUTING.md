@@ -173,10 +173,10 @@ README 只复述结论，判定依据是本表。
 | --- | --- | --- |
 | `engines.dsh` | `>=0.1.1-rc.2` | 宿主版本下界；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
 | `@deepseek-ai/cordis` | `^4.0.1` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
-| `@deepseek-ai/schemastery` | `^3.18.1` | `Config` schema（`object` / `union` / `dict` / `.volatile()`），0.1.6 一代的 namespace schema 也用它 |
+| `@deepseek-ai/schemastery` | `^3.18.1` | `Config` schema（`object` / `union` / `dict` / `.volatile()`），遗留一代（DSH <= 0.1.6）的 namespace schema 也用它 |
 | `react` | `^18.2.0` | client bundle（宿主 seed 模块提供） |
 
-**不声明任何 `@deepseek-ai/dsh-*` peer**（0.1.6 起）：插件的 Host 半只 import
+**不声明任何 `@deepseek-ai/dsh-*` peer**（0.2.0 起）：插件的 Host 半只 import
 `@deepseek-ai/schemastery`，注入的通知消息用 `node:crypto` + 本地 `deepFreeze` 自行构造
 （与宿主 `@deepseek-ai/dsh-llm` 的 `createUserMessage` 同形：新 UUID 标识 + 深冻结的 user 消息）。
 宿主侧 `evaluatePluginCompatibility` 只检查 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 这两个名字，
@@ -203,7 +203,7 @@ DSH 0.2.0 又给出另一条：**声明本身也会过期**。共享包跟着核
 `evaluatePluginCompatibility` 判为 `belowMin`：插件行被组合期预检置为 `disabled`
 （`Config.listConfigs` 里是 `inactive`），插件页卡片报「与 DSH 0.2.0-rc.1 不兼容」。
 同一版本还有一处只是**取值方式**变了的契约：`Agent` 收窄成 `{ id }`（会话 id），
-不再有 `agent.session`，按会话取模式的代码会静默退回默认值。于是 0.1.6 干脆把这条 peer
+不再有 `agent.session`，按会话取模式的代码会静默退回默认值。于是 0.2.0 干脆把这条 peer
 去掉：只用 `node:crypto` + 本地 `deepFreeze` 构造同形消息，会话地址改由 `sessionIdOf`
 兼容两种 Agent 形状，`engines.dsh` 一并改为无上界的 `>=0.1.1-rc.2`。可复用的判据是——
 **peer 里只保留真的被 import 的包**，而 `@deepseek-ai/dsh-*` 里每一个都绑定某条 DSH 版本线，
@@ -237,8 +237,12 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 插件版本**独立于** DSH 核心版本线演进（DSH 兼容范围由 §3.1 的 peer 范围表达，不要用插件
 版本号去对齐核心版本——历史上 `0.1.1-rc.2` 曾对齐过一次核心，那是特例）：
 
-- 版本号只动第三位：`0.1.0` → `0.1.1` → `0.1.2`。插件处于 `0.x`，新增功能与仅修复都进第三位，
+- 版本号默认只动第三位：`0.1.0` → `0.1.1` → `0.1.2`。插件处于 `0.x`，新增功能与仅修复都进第三位，
   区别写在 CHANGELOG 的「新增」/「变更」小节里，不靠版本号的位置表达。
+- **第二位留给插件自身代际的变化**：宿主声明面（`engines.dsh`、`@deepseek-ai/dsh-*` peer）发生
+  代际改变时才动第二位。`0.1.5` → `0.2.0` 是第一次：插件开始支持 DSH `0.2.0-rc.1` 线，并去掉了
+  唯一一条随 DSH 版本线漂移的 peer（§3.1）。它仍然**不是**与 DSH 版本对齐——对齐与否由
+  `engines.dsh` 声明，版本号只表达插件自己的代际。
 - **正式版之后不要再追加同一版本的 `-rc.N`**：预发布号只属于尚未发布的版本。
   `v0.1.1-rc.4` 就是这么被否掉的——`0.1.1` 已经是正式版，再发它的 rc 等于往回走。
 

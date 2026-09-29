@@ -10,7 +10,7 @@
 
 ## [Unreleased]
 
-## [0.1.6] - 2026-09-29
+## [0.2.0] - 2026-09-29
 
 ### 修复
 
@@ -41,12 +41,19 @@
 ### 文档
 
 - README（中/英）：版本说明补上 `0.2.0-rc.1`（DSH Desktop 2.0.16）的验证记录与
-  「不再声明 `@deepseek-ai/dsh-*` peer」这一事实；tarball 示例文件名同步到 0.1.6。
+  「不再声明 `@deepseek-ai/dsh-*` peer」这一事实；tarball 示例文件名同步到 0.2.0。
 - `CONTRIBUTING.md`：§3.1 的声明表删掉 `@deepseek-ai/dsh-llm`、`engines.dsh` 改为
   `>=0.1.1-rc.2`，并说明「peer 只留真的被 import 的包」；§3.2 补 0.2.0 的教训；
   §3.5 补 0.2.0 也没有 `settingsScope` / `settings.plugin.item`；§2 与 §4 补图标/元数据、
   Agent 双形状、消息构造的检查项与反向验证；§4.1 新增 0.2.0-rc.1 的校验记录。
 - `doc/design.md`：依赖与兼容章节同步；新增 0.2.0 的验证记录。
+
+### 版本
+
+- 本次把第二位从 `0.1` 提到 `0.2`（跳过 `0.1.6`）：插件的宿主声明面发生了代际变化——开始支持
+  DSH `0.2.0-rc.1` 线，并去掉了唯一一条随 DSH 版本线漂移的 peer。规则与依据见
+  [CONTRIBUTING.md §3.4](./CONTRIBUTING.md#34-版本号与发布的关系)；它仍然不是与 DSH 版本对齐，
+  兼容范围由 `engines.dsh`（`>=0.1.1-rc.2`）表达。
 
 ### 验证
 

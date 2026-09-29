@@ -453,7 +453,7 @@ SessionFormatError: format v4 message requires a producer-owned source kind
 - **恢复**：坏事件从未落盘（v4 会话文件与投影缓存都没有 `"kind":"plugin"`），重启即恢复。
 - **发布处理**：0.1.4 的 Release 与 tag 已撤回，改用 0.1.5。
 
-### 5.7 DSH 0.2.0 的兼容性判定与 Agent 收窄（0.1.6）
+### 5.7 DSH 0.2.0 的兼容性判定与 Agent 收窄（0.2.0）
 
 0.2.0 上插件不再激活，插件页卡片报「…与 DSH 0.2.0-rc.1 不兼容（要求
 `@deepseek-ai/dsh-llm ^0.1.1-rc.2`）」。两条独立的根因：
@@ -491,7 +491,7 @@ SessionFormatError: format v4 message requires a producer-owned source kind
   同一脚本对 profile 里已装的 0.1.5 复现出插件页那条不兼容。`npm run check` 全绿，
   反向验证：把 `@deepseek-ai/dsh-llm` 的 import 加回 ⇒ 加载期报错；把 `sessionIdOf`
   改回只读 `agent.session.id` ⇒ 8 条 FAIL。
-- **未完成**：DSH Desktop 2.0.16 界面上没有热装载 0.1.6（替换已安装包需要重启 Desktop），
+- **未完成**：DSH Desktop 2.0.16 界面上没有热装载 0.2.0（替换已安装包需要重启 Desktop），
   因此宿主渲染的默认模式表单与按钮外观只做了接口层核对，见 CONTRIBUTING §4.1。
 
 ## 6. 已知边界与后续
