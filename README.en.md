@@ -46,7 +46,7 @@ Both apply immediately and persist.
 
 ## Install
 
-Requires the [dsh CLI](https://github.com/deepseek-ai/deepseek-harness) (lower bound `0.1.1-rc.2`, verified on `0.1.5-rc.2` and `0.1.7-rc.1` — see the version note below).
+Requires the [dsh CLI](https://github.com/deepseek-ai/deepseek-harness) (lower bound `0.1.1-rc.2`, verified on `0.1.5-rc.2`, `0.1.7-rc.1` and `0.2.0-rc.1` — see the version note below).
 
 Install from the GitHub repository:
 
@@ -58,11 +58,15 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > `--profile web` is the default profile. Use `--profile desktop` for [DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop); replace `web` with the name of any other profile.
 
 > [!NOTE]
-> **Version requirement**: DSH `0.1.1-rc.2` or newer on the 0.1.x line (no upper bound); verified on DSH
-> `0.1.5-rc.2` (DSH Desktop 2.0.11) and `0.1.7-rc.1` (DSH Desktop 2.0.14). An older host is reported by
-> dsh-market as "below declared minimum", so upgrade DSH first.
+> **Version requirement**: DSH `0.1.1-rc.2` or newer (no upper bound); verified on DSH
+> `0.1.5-rc.2` (DSH Desktop 2.0.11), `0.1.7-rc.1` (DSH Desktop 2.0.14) and `0.2.0-rc.1`
+> (DSH Desktop 2.0.16). An older host is reported by dsh-market as "below declared
+> minimum", so upgrade DSH first.
 > 0.1.7 replaced the settings service contract (plugin Config instead of namespaces); this plugin supports
 > both, and the default mode has to be set once after that upgrade — see Configuration above.
+> From 0.2.0 on, no `@deepseek-ai/dsh-*` peer is declared: the plugin imports no versioned host
+> package (the notification message is built in-tree), so a 0.2 host can no longer report it as
+> incompatible.
 > Development, the reasoning behind the declared ranges and the compatibility checklist live in
 > [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -75,7 +79,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 Or download the tarball from [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) and install it:
 
 ```sh
-dsh plugin --profile web add ./dsh-approval-mode-0.1.5.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.6.tgz
 ```
 
 Verify the composed config contains the plugin layer:

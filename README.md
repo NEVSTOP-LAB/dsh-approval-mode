@@ -48,7 +48,7 @@ DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspac
 
 ## 安装
 
-需要 [dsh CLI](https://github.com/deepseek-ai/deepseek-harness)（下界 `0.1.1-rc.2`，实测 `0.1.5-rc.2`，见下方版本说明）。
+需要 [dsh CLI](https://github.com/deepseek-ai/deepseek-harness)（下界 `0.1.1-rc.2`，实测 `0.1.5-rc.2`、`0.1.7-rc.1` 与 `0.2.0-rc.1`，见下方版本说明）。
 
 从 GitHub 仓库安装：
 
@@ -60,11 +60,14 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > `--profile web` 是默认 profile。桌面版（[DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
 
 > [!NOTE]
-> **版本要求**：需要 DSH `0.1.1-rc.2` 及以上（0.1.x 线，无上界）；已在 DSH `0.1.5-rc.2`
-> （DSH Desktop 2.0.11）与 `0.1.7-rc.1`（DSH Desktop 2.0.14）上验证。低于 `0.1.1-rc.2`
-> 的宿主会被 dsh-market 标记为「低于声明下界」，请先升级 DSH。
+> **版本要求**：DSH `0.1.1-rc.2` 及以上（无上界）；已在 DSH `0.1.5-rc.2`
+> （DSH Desktop 2.0.11）、`0.1.7-rc.1`（DSH Desktop 2.0.14）与 `0.2.0-rc.1`
+> （DSH Desktop 2.0.16）上验证。低于 `0.1.1-rc.2` 的宿主会被 dsh-market 标记为
+> 「低于声明下界」，请先升级 DSH。
 > 0.1.7 更换了 settings 服务的契约（插件 Config 取代命名空间），本插件两代都支持；
 > 升级后默认模式需要重设一次，见上文「配置」。
+> 0.2.0 起宿主不再声明任何 `@deepseek-ai/dsh-*` peer：插件不 import 带版本号的宿主包
+> （通知消息在插件内构造），因此 0.2 的 DSH 不会再把本插件判为不兼容。
 > 开发、版本声明的判定依据与兼容性校验方法见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 建议锁定提交，避免后续更新改变实际内容：
@@ -76,7 +79,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode#<commit-sha>
 也可以从 [Releases](https://github.com/NEVSTOP-LAB/dsh-approval-mode/releases) 下载 tarball 安装：
 
 ```sh
-dsh plugin --profile web add ./dsh-approval-mode-0.1.5.tgz
+dsh plugin --profile web add ./dsh-approval-mode-0.1.6.tgz
 ```
 
 安装后确认组合层里出现该插件：

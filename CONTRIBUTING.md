@@ -24,8 +24,11 @@ dsh-approval-mode/
 ├── CONTRIBUTING.md      # 本文档：开发流程、版本要求、验证方法
 ├── CHANGELOG.md         # 每个版本的变更；发布正文的来源
 ├── doc/design.md        # 设计文档：架构与关键机制
-├── package.json         # bundle manifest（dsh.bundle + dsh.client + engines.dsh + peer 版本要求）
+├── package.json         # bundle manifest（dsh.bundle + dsh.client + engines.dsh + peer 版本要求 + icon）
 ├── cordis.patch.yml     # 组合层：插入插件行
+├── icon.svg             # 插件页/插件市场卡片图标（manifest 的 icon）
+├── locale/en.json       # 插件显示名与描述（en）
+├── locale/zh.json       # 插件显示名与描述（zh）
 ├── index.js             # Host half（审批应答器 + Config/既有 settings 兼容 + 控制路由 + 代理通知）
 ├── lib/client.js        # Client half（工具栏控件 + <=0.1.6 的插件页配置卡片）
 └── scripts/
@@ -85,11 +88,12 @@ node scripts/check-host.mjs
 
 ### 2.2 `scripts/check-host.mjs` 为什么存在
 
-`index.js` 依赖 `@deepseek-ai/schemastery` 与 `@deepseek-ai/dsh-llm`，而本仓库刻意不装
-依赖，因此它平时只在真实宿主里运行——恰恰是这套代码里失败最安静的部分：模式判定错了
-只会表现为「审批没弹」或「提权被自动放行」，没有任何报错。该脚本用
-`module.registerHooks` 为这两个说明符提供进程内打桩，加载**真实的 `index.js`**，并用
-假的 settings / webServer / agents 上下文断言：
+`index.js` 依赖 `@deepseek-ai/schemastery`，而本仓库刻意不装依赖，因此它平时只在真实宿主里
+运行——恰恰是这套代码里失败最安静的部分：模式判定错了只会表现为「审批没弹」或「提权被自动
+放行」，没有任何报错。该脚本用 `module.registerHooks` 为该说明符提供进程内打桩，**并对任何
+`@deepseek-ai/dsh-*` 说明符直接报错**（插件不得依赖带版本号的宿主包；重新引入这类 import 必须
+在这里失败，而不是在用户的 profile 里表现为「插件不兼容」），加载**真实的 `index.js`**，
+并用假的 settings / webServer / agents 上下文断言：
 
 1. 模式词汇就是 client 侧提供的三个值，且 `Config` 把默认模式声明成实时（volatile）字段；
 2. 提权按 `dsh-sandbox` 真正发出的 reason 前缀识别，且不误判普通审批；
@@ -106,7 +110,10 @@ node scripts/check-host.mjs
    以及非回环 403、非法 mode 400、坏 JSON 400、非法 session 地址 400、错误方法 405；
 9. 坏会话文件退化为空、写入即修复；宿主侧 live 配置变更只通知一次；
 10. **注入的通知消息带 producer 自有的 source kind**（不是退役的 `{kind:"plugin"}`）——
-    这是会话格式 v4 的写入准入规则，违反它会让该会话之后每一轮都失败（§4.1 的 0.1.5 记录）。
+    这是会话格式 v4 的写入准入规则，违反它会让该会话之后每一轮都失败（§4.1 的 0.1.5 记录）；
+11. 消息在插件内构造：新标识、深冻结、不改调用方对象，且 `deepFreeze` 对环安全；
+12. Agent 的会话地址按**两种形状**解析（0.2.0 的 `agent.id` 与更早的 `agent.session.id`），
+    两者都拿不到的请求落到默认值而不是抛异常。
 
 打桩替换的是库，不是被测代码：`index.js` 是磁盘上那一份，只有它的 import 被改写。
 
@@ -125,9 +132,14 @@ node scripts/check-host.mjs
   「a settings service WITHOUT register (0.1.7+) mounts the plugin instead of throwing」
   就是 DSH 0.1.7 上的真实回归；
 - 把注入消息的 `source` 改回 `{ kind: "plugin", plugin: "approval-mode" }`，`check-host.mjs`
-  应报 2 条 `FAIL`（v4 source 准入与 producer kind 一致），这正是 0.1.4 的回归。
+  应报 2 条 `FAIL`（v4 source 准入与 producer kind 一致），这正是 0.1.4 的回归；
+- 在 `index.js` 里重新 `import` 任意 `@deepseek-ai/dsh-*`（例如 `@deepseek-ai/dsh-llm`），
+  `check-host.mjs` 应在加载期直接抛
+  `index.js resolved @deepseek-ai/dsh-llm — this plugin must not depend on a versioned @deepseek-ai/dsh-* package`；
+- 把 `sessionIdOf` 改回只读 `agent.session.id`，`check-host.mjs` 应报 8 条 `FAIL`
+  （0.2.0 的 Agent 形状、按会话模式、通知范围都失效）。
 
-六条均已实测（2026-09-22 / 2026-09-25），确认后改回。
+八条均已实测（2026-09-22 / 2026-09-25 / 2026-09-29），确认后改回。
 
 ### 2.4 端到端验证（可选）
 
@@ -159,17 +171,23 @@ README 只复述结论，判定依据是本表。
 
 | 声明 | 范围 | 依据 |
 | --- | --- | --- |
-| `engines.dsh` | `^0.1.1-rc.2` | 宿主版本下界；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
-| `@deepseek-ai/dsh-llm` | `^0.1.1-rc.2` | `createUserMessage`：稳定消息标识自 0.1.1-rc.2 起必需，低于它的宿主会让会话恢复失败（见已关闭的 #1） |
+| `engines.dsh` | `>=0.1.1-rc.2` | 宿主版本下界；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
 | `@deepseek-ai/cordis` | `^4.0.1` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
-| `@deepseek-ai/schemastery` | `^3.18.1` | namespace schema（`object` / `union` / `dict`） |
+| `@deepseek-ai/schemastery` | `^3.18.1` | `Config` schema（`object` / `union` / `dict` / `.volatile()`），0.1.6 一代的 namespace schema 也用它 |
 | `react` | `^18.2.0` | client bundle（宿主 seed 模块提供） |
 
-`@deepseek-ai/dsh-settings` **不再声明**（0.1.4 起）：插件不 import 该包，只用宿主注入的
-settings 服务，且两代契约都兼容——<=0.1.6 的 `register/get/update` 与 0.1.7+ 的
-`describe/update`（配置表单）。声明一个不再被 import 的包，只会给浏览期兼容性判定错误的信号。
+**不声明任何 `@deepseek-ai/dsh-*` peer**（0.1.6 起）：插件的 Host 半只 import
+`@deepseek-ai/schemastery`，注入的通知消息用 `node:crypto` + 本地 `deepFreeze` 自行构造
+（与宿主 `@deepseek-ai/dsh-llm` 的 `createUserMessage` 同形：新 UUID 标识 + 深冻结的 user 消息）。
+宿主侧 `evaluatePluginCompatibility` 只检查 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 这两个名字，
+声明一个与自己不再有代码关系的包，等于把插件的可用范围绑死在某条 DSH 版本线上——0.2.0 的
+`@deepseek-ai/dsh-llm` 一起步就是 `0.2.0-rc.1`，旧声明因此被判为不兼容（§4.1）。
 
-### 3.2 为什么上界不设（以及 0.1.7 的教训）
+`@deepseek-ai/dsh-settings` **同样不声明**（0.1.4 起）：插件不 import 该包，只用宿主注入的
+settings 服务，且两代契约都兼容——<=0.1.6 的 `register/get/update` 与 0.1.7+（含 0.2.0）的
+`describe/update`（配置表单）。
+
+### 3.2 为什么上界不设（以及 0.1.7 / 0.2.0 的教训）
 
 caret 只界到 `0.2.0`，不写显式上界：插件只使用**公开服务**——`settings`、`webServer`、
 `approval/request` 水瀑布、slot 座位——不依赖内部符号。
@@ -180,11 +198,23 @@ caret 只界到 `0.2.0`，不写显式上界：插件只使用**公开服务**�
 `webServer`），改用 `ctx.inject` 按能力接入两代实现；真正没变的两个接口——控制路由与
 审批水瀑布——保持原样。结论：宿主换代时按 §4 逐 API 对照，不要因为服务名没变就假设契约没变。
 
+DSH 0.2.0 又给出另一条：**声明本身也会过期**。共享包跟着核心一起跳到 `0.2.0-rc.1`，
+`peerDependencies` 里写着 `^0.1.1-rc.2` 的 `@deepseek-ai/dsh-llm` 立刻被
+`evaluatePluginCompatibility` 判为 `belowMin`：插件行被组合期预检置为 `disabled`
+（`Config.listConfigs` 里是 `inactive`），插件页卡片报「与 DSH 0.2.0-rc.1 不兼容」。
+同一版本还有一处只是**取值方式**变了的契约：`Agent` 收窄成 `{ id }`（会话 id），
+不再有 `agent.session`，按会话取模式的代码会静默退回默认值。于是 0.1.6 干脆把这条 peer
+去掉：只用 `node:crypto` + 本地 `deepFreeze` 构造同形消息，会话地址改由 `sessionIdOf`
+兼容两种 Agent 形状，`engines.dsh` 一并改为无上界的 `>=0.1.1-rc.2`。可复用的判据是——
+**peer 里只保留真的被 import 的包**，而 `@deepseek-ai/dsh-*` 里每一个都绑定某条 DSH 版本线，
+能不 import 就不 import。
+
 ### 3.3 为什么共享宿主包只放 peerDependencies，且标成 optional
 
 放进 `dependencies` 会在插件自己的 `node_modules` 里装独立拷贝、遮蔽宿主版本，
 dsh-market 也会就此告警。本插件 `dependencies` 为空，宿主共享包全部由
-`$DSH_HOME/profiles/node_modules` 解析。（`devDependencies` 里的同名两项只服务本地开发。）
+`$DSH_HOME/profiles/node_modules` 解析。（`devDependencies` 里的 `@deepseek-ai/schemastery`
+只服务本地开发。）
 
 profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些包由上一层的
 共享层提供、pnpm 在 profile 工作区内看不到，`pnpm peers check` 因此把它们全报成
@@ -226,7 +256,9 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 **按插件 `Config` 自动渲染**（§3.1 的 `Config.defaultMode`），客户端不需要卡片代码。
 `lib/client.js` 仍保留旧卡片注册（嵌套 `ctx.inject(["settingsScope"])`），在 0.1.7+ 上
 只是不注册——这条降级路径由 `scripts/check-client.mjs` 断言：宿主没有该服务时，工具栏按钮
-与绕过审批完全不受影响。
+与绕过审批完全不受影响。0.2.0 同样没有这两个名字（客户端服务目录里只有 `layout`、`locale`、
+`sessions`、`slots`、`theme`、`timer`、`uiWorkspace`、`workspaces`；槽位树里也没有
+`settings.plugin.item`），因此 0.2.0 上默认模式同样由宿主渲染，卡片代码依旧不参与。
 
 ## 4. 兼容性校验怎么做
 
@@ -244,13 +276,15 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
    | `ctx.webServer.register({kind:"exact",path,handler})` | `@deepseek-ai/dsh-host-webserver` |
    | `ctx.on("approval/request", fn, true)`（prepend） | `@deepseek-ai/dsh-user-approval`（`ctx.waterfall`） |
    | `reason` 前缀 `escalate sandbox to <mode>: ` | `@deepseek-ai/dsh-sandbox`（`approveEscalation`） |
-   | `createUserMessage` | `@deepseek-ai/dsh-llm` 导出表 |
+   | Agent 的会话地址：0.2.0 是 `agent.id`，更早是 `agent.session.id` | `@deepseek-ai/dsh-user-approval`（`ApprovalRequestEvent.agent`）、`@deepseek-ai/dsh-agent`（`Agent` 收窄为 `{ id }`）、`@deepseek-ai/dsh-agent-loop`（`inject(input)`） |
+   | 通知消息在插件内构造（`node:crypto` 的 `randomUUID` + 本地 `deepFreeze`），与宿主 `createUserMessage` 同形 | `@deepseek-ai/dsh-llm` 的 `createMessage`/`deepFreeze`（`@deepseek-ai/dsh-util-values`）——只作对照，**不 import** |
    | 注入消息的 `source.kind` 必须是 producer 自有值，不能是 `"plugin"` | `@deepseek-ai/dsh-session-format-v3-to-v4`（`assertV4RowAdmission`，会话格式 v4 写入准入） |
    | `ctx.get("dshHomePath")(…)`（插件自有状态目录） | `@deepseek-ai/dsh-home-paths`（app-boot 提供） |
    | `slots.register({…, locale})` → 组件 `props.t` | `@deepseek-ai/dsh-client-ui-renderer`（locale seat） |
    | `props.useProjection("permissions")` | standard props |
    | `props.sessionId`（session 作用域座位） | `@deepseek-ai/dsh-client-ui-session`（`BUILTIN_SOURCE`） |
    | `settings.plugin.item`（keyed slot）+ `settingsScope`（仅 <=0.1.6 的卡片） | `@deepseek-ai/dsh-client-ui-settings-plugins` / `dsh-client-ui-settings` |
+   | `icon` + `locale/*.json` 的 `meta.title/description` → 插件页卡片 | `@deepseek-ai/dsh-app-boot` 的 `readPluginMeta`（`iconOf` 的扩展名/尺寸/目录越界校验；`dictionariesOf` 读 `meta.title`/`meta.description`） |
 
 2. **确认卡片仍会被派发**：宿主「插件」分区渲染的是
    `describe().namespaces`（被服务的 settings 命名空间）与 `settings.plugin.item`
@@ -270,8 +304,33 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 
 5. **注意误判**：§2.4 的 403 是 DSH Desktop 的浏览器访问围栏，与插件无关。
 
+6. **用宿主自己的判定函数复核 manifest**（不靠 semver 心算）：插件行的启用与否由
+   `@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility(manifest, exemptions, 运行版本)`
+   决定——返回非 `undefined` 就是插件页上那条「不兼容」。把 `manifest` 换成插件目录里的
+   `package.json`、`runtime` 取 `getDshRuntimeVersion()` 即可离线复现；同时用
+   `dshmarket` 的 `manifestFacts` + `deriveHostCompatibility` 复核 dsh-market 的浏览期结论
+   （它读顶层 `engines.dsh` 与宿主 peer），并用 `readPluginMeta(name, <package.json 的 file URL>)`
+   确认 `icon` 与 `locale/*.json` 真能解析出 data URL 与双语标题。§4.1 的 0.2.0 记录就是这么做的。
+
 ### 4.1 校验记录
 
+- **0.2.0-rc.1（DSH Desktop 2.0.16，node v24.18.1，共享层 `@deepseek-ai/*` 0.2.0-rc.1、
+  cordis 4.0.4、schemastery 3.18.4）— 修复后通过。** 失败现象与根因：插件页卡片报
+  「dsh-approval-mode@0.1.5 与 DSH 0.2.0-rc.1 不兼容（要求 `@deepseek-ai/dsh-llm ^0.1.1-rc.2`）」，
+  宿主侧的 `Config.listConfigs` 把插件行报成 `inactive`。根因是 manifest 里的
+  `@deepseek-ai/dsh-llm` peer（0.2.0 起该包与核心同线，`evaluatePluginCompatibility` 判 `belowMin`），
+  叠加两处真实契约变化：`ApprovalRequestEvent.agent` 收窄为 `{ id }`（不再有 `session`），
+  以及通知消息工厂不再是插件的稳定依赖。修复见 §3.1/§3.2；离线契约检查全绿（§2，含新增的
+  `Agent` 双形状与消息构造断言），反向验证见 §2.3。接口依据：`dsh-app-boot` 的
+  `evaluatePluginCompatibility`/`readPluginMeta`/`prepareProfileEntries`、`dsh-plugin-manager` 的
+  `listBundles`、`dsh-user-approval` 的 `ApprovalService`、`dsh-agent-loop` 的 `Agent.inject`、
+  `dsh-settings` 的 `SettingsForms`（0.2.0 仍是 `describe/update`，`ns = entry.options.id`）、
+  `dsh-sandbox` 的 `approveEscalation`、客户端服务目录与 `conversation.input.left` 的 slot 契约。
+  第 6 步的离线复核：新 manifest 的 `evaluatePluginCompatibility` 为 `undefined`、dsh-market 结论
+  `compatible`、`readPluginMeta` 解析出 `icon`（`data:image/svg+xml;base64,…`）与中英标题；
+  同一脚本对 profile 里已装的 0.1.5 复现出插件页那条不兼容。
+  **未做的一步**：DSH Desktop 2.0.16 的界面上没有热装载本版（替换已安装包需要重启 Desktop），
+  因此「宿主渲染的默认模式表单」与按钮外观只做了接口层核对，未截图确认。
 - **0.1.5-rc.2（DSH Desktop 2.0.11，node v24.18.1，共享层 `@deepseek-ai/*` 0.1.5-rc.2、
   cordis 4.0.2、schemastery 3.18.2）— 通过。** 上面第 1 步列出的 API 全部一致；
   宿主日志 `hot-mounted dsh-approval-mode` 且无插件错误；`settings.yaml` 中
@@ -322,10 +381,12 @@ node scripts/release-notes.mjs --version 0.1.2 --changelog CHANGELOG.md --out -
 4. 跑 `npm run check`，并用上面的命令预览一遍 Release 正文；
 5. 提交并推送，然后打 `v<version>` tag。
 
-发布内容由 `package.json` 的 `files` 决定：`index.js`、`lib/client.js`、
-`cordis.patch.yml`、两份 README、`CONTRIBUTING.md`、`CHANGELOG.md`、`doc/`、LICENSE——
-README 指向本文档的**相对链接在安装后的包里同样可用**（缺了它，tarball 用户点开就是死链）。
-`scripts/` 是开发工具，不进 tarball。
+发布内容由 `package.json` 的 `files` 决定：`index.js`、`lib/client.js`、`icon.svg`、
+`locale/*.json`、`cordis.patch.yml`、两份 README、`CONTRIBUTING.md`、`CHANGELOG.md`、
+`doc/`、LICENSE——README 指向本文档的**相对链接在安装后的包里同样可用**（缺了它，tarball
+用户点开就是死链）。`scripts/` 是开发工具，不进 tarball。`icon.svg` 与 `locale/*.json`
+必须同时在 `files` 与 `exports`（`"./locale/*.json"`）里：宿主读插件显示元数据走的是
+Node 解析器，`exports` 漏了它，图标与标题就静默退回包名。
 
 ## 6. 开发坑
 
