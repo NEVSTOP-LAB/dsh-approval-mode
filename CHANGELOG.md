@@ -10,6 +10,59 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-29
+
+### 修复
+
+- **DSH 0.2.0-rc.1 上插件被判为不兼容，插件行不激活。** 现象：DSH Desktop 2.0.16 升级后，
+  插件页卡片报「dsh-approval-mode@0.1.5 与 DSH 0.2.0-rc.1 不兼容（要求
+  `@deepseek-ai/dsh-llm ^0.1.1-rc.2`），运行它可能导致崩溃或数据丢失」；`Config.listConfigs`
+  把插件行报成 `inactive`，界面上的审批模式按钮消失。
+
+  - **原因**：宿主在组合期用 `evaluatePluginCompatibility` 检查 manifest 里所有
+    `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 的 peer 范围，不满足就把插件行 `disabled`。
+    0.2.0 起 `@deepseek-ai/dsh-llm` 与核心同线跳到 `0.2.0-rc.1`，`^0.1.1-rc.2` 落在它下面。
+    同一版本还有一处真实契约变化：`ApprovalRequestEvent.agent` 收窄为 `{ id }`（会话 id），
+    不再有 `agent.session`——按会话解析审批模式的代码会读不到地址。
+  - **修复**：不再声明、也不再 import 任何带版本号的 `@deepseek-ai/dsh-*` 包。通知消息改在
+    插件内构造（`node:crypto` 的 `randomUUID` + 本地 `deepFreeze`），与宿主
+    `createUserMessage` 同形（新标识、深冻结的 user 消息、producer 自有的 source kind）。
+    会话地址改由 `sessionIdOf` 解析，同时接受 0.2.0 的 `agent.id` 与更早的 `agent.session.id`。
+    `engines.dsh` 从 `^0.1.1-rc.2` 改为无上界的 `>=0.1.1-rc.2`。
+  - **影响面**：只影响插件能否挂载；按会话模式文件（`$DSH_HOME/approval-mode/sessions.json`）
+    与默认模式（插件 `Config.defaultMode`）的存取格式都没变，升级后不需要重设。
+
+### 新增
+
+- **插件图标**：`icon.svg`（盾牌 + 闪电）通过 manifest 的 `icon` 声明，插件页与插件市场的
+  卡片、插件详情页都会显示；`locale/en.json`、`locale/zh.json` 提供双语显示名与描述
+  （此前卡片上的标题退回包名 `dsh-approval-mode`）。
+
+### 文档
+
+- README（中/英）：版本说明补上 `0.2.0-rc.1`（DSH Desktop 2.0.16）的验证记录与
+  「不再声明 `@deepseek-ai/dsh-*` peer」这一事实；tarball 示例文件名同步到 0.1.6。
+- `CONTRIBUTING.md`：§3.1 的声明表删掉 `@deepseek-ai/dsh-llm`、`engines.dsh` 改为
+  `>=0.1.1-rc.2`，并说明「peer 只留真的被 import 的包」；§3.2 补 0.2.0 的教训；
+  §3.5 补 0.2.0 也没有 `settingsScope` / `settings.plugin.item`；§2 与 §4 补图标/元数据、
+  Agent 双形状、消息构造的检查项与反向验证；§4.1 新增 0.2.0-rc.1 的校验记录。
+- `doc/design.md`：依赖与兼容章节同步；新增 0.2.0 的验证记录。
+
+### 验证
+
+- `npm run check`：语法检查 + `scripts/check-client.mjs` + `scripts/check-host.mjs` 全绿。
+  `check-host.mjs` 新增两条硬约束——**任何 `@deepseek-ai/dsh-*` 说明符在加载期直接报错**
+  （重新引入这类 import 会在离线检查里失败），以及 Agent 双形状、消息构造（新标识/深冻结/
+  v4 source 准入）的断言。
+- 反向验证：把 `import "@deepseek-ai/dsh-llm"` 加回 `index.js` ⇒ 加载期报错；
+  把 `sessionIdOf` 改回只读 `agent.session.id` ⇒ 8 条 `FAIL`（实测）。
+- 用宿主自己的判定函数离线复核新 manifest：`evaluatePluginCompatibility` 返回
+  `undefined`、dsh-market 的 `deriveHostCompatibility` 为 `compatible`、
+  `readPluginMeta` 解析出 `data:image/svg+xml;base64` 的图标与中英标题；同一脚本对
+  profile 里已装的 0.1.5 复现出插件页那条不兼容（记录见 CONTRIBUTING §4.1）。
+- 未完成：DSH Desktop 2.0.16 界面上没有热装载本版（替换已安装包需要重启 Desktop），
+  因此宿主渲染的默认模式表单与按钮外观只做了接口层核对。
+
 ## [0.1.5] - 2026-09-25
 
 ### 修复

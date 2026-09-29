@@ -36,14 +36,16 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 │ DSH Host                                                   │
 │ index.js                                                   │
 │ ├─ 默认模式 = 插件 Config.defaultMode（.volatile() 实时）   │
-│ │    0.1.7+：宿主按 Config schema 渲染配置表单，写入后就地   │
-│ │            更新引用（不重挂插件）                          │
+│ │    0.1.7+（含 0.2.0）：宿主按 Config schema 渲染配置表单，│
+│ │            写入后就地更新引用（不重挂插件）                │
 │ │    <=0.1.6：走遗留 settings 命名空间 "approval-mode"      │
 │ │    （该服务仍有 register 时注册并读写；遗留 mode 仍可读）  │
 │ ├─ 按会话模式 = $DSH_HOME/approval-mode/sessions.json       │
 │ │    { sessionId -> mode }，原子写入；无文件时一次性迁移旧   │
 │ │    settings 文档里的 sessions 映射                         │
 │ ├─ approval/request 应答器（prepend: true，水瀑布最前端）  │
+│ │    会话地址由 sessionIdOf 解析：0.2.0 的 agent.id /        │
+│ │    更早的 agent.session.id；两者都没有则用默认值          │
 │ │    bypass                    -> "allowed-once"           │
 │ │    bypass-except-escalation  -> 提权 next()，其余放行    │
 │ │    ask                       -> next()                   │
@@ -51,6 +53,7 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 │ │    地址决定对象：无 session=默认值，?session=会话        │
 │ └─ 变更观察：settings/updated（旧）或 loader/volatile-update │
 │      （0.1.7+ 配置表单写入）-> 只通知生效模式变了的会话     │
+│      通知消息在插件内构造（randomUUID + deepFreeze）        │
 └────────────────────────────────────────────────────────────┘
         same-origin fetch（GET/POST /approval-mode[?session=…]）
 ┌────────────────────────────────────────────────────────────┐
@@ -60,12 +63,17 @@ DSH 的审批系统（`@deepseek-ai/dsh-user-approval`）内置两种会话级�
 │ │    读写 props.sessionId 指向的会话（缺失时用默认地址）   │
 │ ├─ 插件页卡片 settings.plugin.item[key=approval-mode]：    │
 │ │    0.1.6 及更早：设置 → 插件 → 插件配置 里的卡片（读默认）│
-│ │    0.1.7+：该槽位已不存在，宿主按 Config 自渲染配置项，    │
-│ │    客户端只保留工具栏控件（嵌套 inject 自动降级）          │
+│ │    0.1.7+ / 0.2.0：该槽位与 settingsScope 都不存在，宿主  │
+│ │    按 Config 自渲染配置项，客户端只保留工具栏控件          │
+│ │    （嵌套 inject 自动降级）                                │
 │ ├─ 每个地址一个 store（useMode），互不冒充                 │
 │ └─ 读写 Host 控制路由（fetch，同源）                       │
 └────────────────────────────────────────────────────────────┘
 ```
+
+插件显示元数据（图标、双语标题与描述）**不经过任何代码**：`package.json` 的 `icon` 指向包内的
+`icon.svg`，`locale/en.json` 与 `locale/zh.json` 提供 `meta.title` / `meta.description`，
+宿主在激活插件前用 `readPluginMeta` 读出来（§3.5）。
 
 ### 2.1 为什么用 webServer 路由而非 settings RPC
 
@@ -232,12 +240,13 @@ standard props 注入 `sessionId`（`dsh-client-ui-session` 的 `BUILTIN_SOURCE`
 
 ### 3.4.1 设置页里的默认模式（两代宿主两种呈现）
 
-**DSH 0.1.7+（当前）**：设置页的配置项由宿主**按插件 `Config` 自动渲染**——`settings`
+**DSH 0.1.7+（当前，含 0.2.0）**：设置页的配置项由宿主**按插件 `Config` 自动渲染**——`settings`
 服务把每个插件 entry 的 Config schema 投影成表单（`configForms`），浏览器侧用 schema-form
 渲染，写入走 `settings.update(entryId, patch)`。因此本插件**不需要任何客户端卡片代码**：
 声明 `Config.defaultMode`（`.volatile()`）就已经在「设置 → 插件」里出现一个下拉框，
 选中即写 profile patch，载入器把新值就地提交进插件持有的引用（`loader/volatile-update`），
-插件不重挂。
+插件不重挂。0.2.0 的 `settings` 服务契约与 0.1.7 相同（`describe`/`update`/`replace`/`mutate`，
+`ns` 仍是 `entry.options.id`），表单渲染在插件行的详情页（`plugins.bundle.config` 只是行内扩展位）。
 
 **DSH <= 0.1.6（兼容分支）**：宿主「插件」分区把**被服务的 settings 命名空间**与注册进
 `settings.plugin.item` 槽位的卡片做**交集**渲染：
@@ -260,8 +269,8 @@ ctx.inject(["settingsScope"], (scoped) => {
 
 **为什么用嵌套 `inject` 而不是模块级 `inject`**：`settingsScope` 由
 `dsh-client-ui-settings` 提供；写进模块级 `inject` 会让整个插件（包括输入框按钮）在
-没有该服务的宿主上一起不挂载。嵌套 inject 让 0.1.7+ 宿主（该服务已不存在）只是
-**不注册这张卡片**——那里的默认模式由宿主的 Config 表单承担。这条降级路径由
+没有该服务的宿主上一起不挂载。嵌套 inject 让 0.1.7+ 与 0.2.0 宿主（该服务、该槽位都不存在）
+只是**不注册这张卡片**——那里的默认模式由宿主的 Config 表单承担。这条降级路径由
 `scripts/check-client.mjs` 断言。
 
 **卡片自带全部外观**：分区只提供 `<ul>`，卡片自己画。视觉逐条对齐宿主
@@ -294,29 +303,40 @@ client 侧按地址建 store（`storeFor(sessionId)`，`null` 即默认地址）
 
 ```
 dsh-approval-mode/
-├── package.json      # dsh.bundle.patch + dsh.client + exports {"./client"}
+├── package.json      # dsh.bundle.patch + dsh.client + icon + exports
 ├── cordis.patch.yml  # - insert: [{ id: dsh-approval-mode, name: dsh-approval-mode }]
+├── icon.svg          # 插件页/市场卡片图标（manifest 的 icon，相对路径、包内）
+├── locale/{en,zh}.json  # meta.title / meta.description（宿主 readPluginMeta 读取）
 ├── index.js          # Host half（ESM，import @deepseek-ai/schemastery）
 └── lib/client.js     # Client half（window.__ModuleLoader__.load({id, factory})）
 ```
 
-- **依赖声明**：`@deepseek-ai/dsh-llm`、`@deepseek-ai/schemastery` 均为 DSH 宿主
-  共享包（宿主 `dsh-plugin-desktop` 自身携带），放 `peerDependencies`，由 DSH
-  共享依赖层 `$DSH_HOME/profiles/node_modules` 解析，避免在插件的 `node_modules`
-  里装独立拷贝而遮蔽宿主版本（本地开发用 `devDependencies` 补齐这两项）；
+- **依赖声明**：Host 半只 import `@deepseek-ai/schemastery`，它是宿主共享包，
+  放 `peerDependencies` 并标 optional，由 DSH 共享依赖层
+  `$DSH_HOME/profiles/node_modules` 解析，避免在插件的 `node_modules`
+  里装独立拷贝而遮蔽宿主版本（本地开发用 `devDependencies` 补齐）；
   `@deepseek-ai/cordis` 与 `react` 同样放 `peerDependencies`（与 better-sidebar 先例一致）。
-  `@deepseek-ai/dsh-settings` **不再声明**：插件从 0.1.4 起不 import 该包，只用宿主注入的
-  settings 服务（两代契约都兼容），声明一个不再使用的包会误导兼容性判定。
+  **任何 `@deepseek-ai/dsh-*` 都不声明**：宿主侧 `evaluatePluginCompatibility` 逐个比对
+  这类 peer 与运行版本，不满足就把插件行置为 `disabled`；插件的通知消息因此在包内构造
+  （`node:crypto` 的 `randomUUID` + 本地 `deepFreeze`，与宿主 `createUserMessage` 同形），
+  0.2.0 起不再随 `@deepseek-ai/dsh-llm` 的版本线漂移。
+  `@deepseek-ai/dsh-settings` 也从 0.1.4 起不声明：插件不 import 该包，只用宿主注入的
+  settings 服务（两代契约都兼容）。
 - **peer 全部标 `optional`**：profile 的 `pnpm-workspace.yaml` 设了
   `autoInstallPeers: false`，而这些 peer 由上一层共享层提供、pnpm 看不到，因此
   `pnpm peers check` 必然把它们报成 `missing peer`。`peerDependenciesMeta.optional = true`
   让 pnpm 不再报这些必然的缺失，同时**保留 `peerDependencies` 里的版本范围**——
   dsh-market 的浏览期兼容性判定读的正是它。宿主版本下界另由顶层
   `engines.dsh` 显式声明（见 [CONTRIBUTING.md §3](../CONTRIBUTING.md#3-版本要求与兼容性)）。
-- **Client manifest**：`dsh.client = { inject: ["@deepseek-ai/dsh-client-runtime"],
+- **显示元数据**：`icon` 指向包内 `icon.svg`（宿主只接受包内相对路径、SVG/PNG/JPEG/WebP、
+  ≤256 KiB）；`locale/en.json` 与 `locale/zh.json` 的 `meta.title` / `meta.description`
+  提供双语名称，宿主经 Node 解析器按 `<包名>/locale/<lang>.json` 读取，因此
+  `exports` 必须包含 `"./locale/*.json"`（与 `icon.svg` 一样还要进 `files`）。
+  读不到时标题退回包名、图标退回面板默认图。
+- **Client manifest**：`dsh.client = { inject: ["@deepseek-ai/dsh-client-ui-conversation"],
   platform: "web" }`——client-modules 扫描 host loader entries 中声明 `dsh.client`
-  的包，将其 `./client` 导出作为 bundle 提供给浏览器（列表只用于模块图排序，
-  图上不存在的名字会被跳过，见 §3.4.1 的嵌套 inject）。
+  的包，将其 `./client` 导出作为 bundle 提供给浏览器（`inject` 只用于模块图排序，
+  这里指向声明 `conversation.input.left` 的包，图上不存在的名字会被跳过）。
 - **bundle 格式**：`window.__ModuleLoader__.load({ id, factory })`，factory 为
   CJS 风格（`require("react")` 解析平台 seed 词）；导出 `{ name, inject, apply }`。
 - **client 运行时服务**：模块级 `inject: ["slots", "locale"]`——slots 注册 UI 座位，
@@ -433,6 +453,47 @@ SessionFormatError: format v4 message requires a producer-owned source kind
 - **恢复**：坏事件从未落盘（v4 会话文件与投影缓存都没有 `"kind":"plugin"`），重启即恢复。
 - **发布处理**：0.1.4 的 Release 与 tag 已撤回，改用 0.1.5。
 
+### 5.7 DSH 0.2.0 的兼容性判定与 Agent 收窄（0.1.6）
+
+0.2.0 上插件不再激活，插件页卡片报「…与 DSH 0.2.0-rc.1 不兼容（要求
+`@deepseek-ai/dsh-llm ^0.1.1-rc.2`）」。两条独立的根因：
+
+- **声明过期**：宿主组合期的预检（`@deepseek-ai/dsh-app-boot` 的
+  `evaluatePluginCompatibility`）会遍历 manifest 的 `peerDependencies`，对
+  `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 逐个用 `semver.satisfies(runtime, range,
+  { includePrerelease: true })` 判定；只要有一个不满足就返回 issue，调用方
+  （`prepareProfileEntries`、`dsh-plugin-manager` 的 `listBundles`）据此把插件行置为
+  `disabled` / 抛出 `incompatible-version`。`@deepseek-ai/dsh-llm` 在 0.2.0 与核心同线，
+  `^0.1.1-rc.2` 因此落在运行版本之下。
+- **Agent 收窄**：0.2.0 的 `Agent` 是 `{ readonly id: SessionId }`，`Agent.session` 已不存在。
+  应答器若要按会话取模式，只能读 `req.agent.id`；`agents.list()` 里的 Agent 同样只有 `id`。
+  读 `agent.session.id` 会拿到 `undefined`，于是每次请求都落到默认模式——**按会话的模式静默失效**，
+  没有任何报错。
+
+- **修复**：删掉 `@deepseek-ai/dsh-llm` 这条 peer 与它的 import，通知消息在包内构造
+  （`randomUUID` + 本地 `deepFreeze`，与 `createUserMessage` 同形）；新增 `sessionIdOf(agent)`
+  同时接受 `agent.id`（0.2.0）与 `agent.session.id`（更早），应答器与通知都改用它；
+  `engines.dsh` 由 `^0.1.1-rc.2` 改为无上界的 `>=0.1.1-rc.2`。
+- **不变的接口**（逐条读过宿主实现）：`approval/request` 水瀑布（`decide()` 仍是
+  `policy === "never" → "rejected"`，再 `ctx.waterfall`）、`ctx.on(name, fn, true)` 的
+  prepend 语义、`ctx.webServer.register`、`settings.describe/update`（`ns = entry.options.id`）、
+  `configEditor.configuration()` 里按 `fiber.uid` 认领 entry（`dsh-settings` 也用 `entry.fiber.uid`）、
+  `loader/volatile-update`（`_commitVolatile` 仍在 `fiber.ctx.emit`）、`dshHomePath`、
+  slot `locale` 与 `useProjection("permissions")`；提权 reason 前缀仍是
+  `escalate sandbox to ${mode}: ${justification}`。
+- **客户端**：0.2.0 的客户端服务目录没有 `settingsScope`，槽位树里也没有
+  `settings.plugin.item`，因此卡片本就注册不上，工具栏控件的注册选项
+  （`name` / `id` / `order` / `label` / `locale`）与 `conversation.input.left` 的
+  standard props（含 `sessionId`、`useProjection`）都未变——客户端代码无需改动。
+- **离线证据**（2026-09-29）：用宿主的判定函数离线复核新 manifest——
+  `evaluatePluginCompatibility` 返回 `undefined`、dsh-market `deriveHostCompatibility` 为
+  `compatible`、`readPluginMeta` 解析出 `data:image/svg+xml;base64` 的图标与中英标题；
+  同一脚本对 profile 里已装的 0.1.5 复现出插件页那条不兼容。`npm run check` 全绿，
+  反向验证：把 `@deepseek-ai/dsh-llm` 的 import 加回 ⇒ 加载期报错；把 `sessionIdOf`
+  改回只读 `agent.session.id` ⇒ 8 条 FAIL。
+- **未完成**：DSH Desktop 2.0.16 界面上没有热装载 0.1.6（替换已安装包需要重启 Desktop），
+  因此宿主渲染的默认模式表单与按钮外观只做了接口层核对，见 CONTRIBUTING §4.1。
+
 ## 6. 已知边界与后续
 
 - 改默认值会立即改变**没有自己模式**的会话的生效模式（含正在运行的会话，Host 每次请求都重新解析，
@@ -444,10 +505,12 @@ SessionFormatError: format v4 message requires a producer-owned source kind
   线性增长，不做过期清理（会话本身是长期可恢复的）；单个条目是几十字节。
 - 提权识别依赖 `dsh-sandbox` 的 reason 前缀文本，宿主改拼写即退化为普通 `bypass`
   （§3.1.1）。
-- 0.1.7+ 的默认模式只能经宿主的配置表单修改；本插件的控制路由也支持 `POST /approval-mode`
-  写默认值（走 `settings.update`），但浏览器半在 0.1.7+ 不再渲染那张卡片（§3.4.1）。
+- 0.1.7+（含 0.2.0）的默认模式只能经宿主的配置表单修改；本插件的控制路由也支持
+  `POST /approval-mode` 写默认值（走 `settings.update`），但浏览器半在 0.1.7+ 不再渲染那张卡片（§3.4.1）。
 - 升级到 0.1.7+ 后，旧 settings 文档里的**默认模式**无法再读取（宿主的旧文档通道已废弃），
   需要重设一次；按会话模式自动迁移（§3.3）。
 - 插件页卡片依赖宿主客户端 `settingsScope` 服务（0.1.0-rc.7+）：只影响 <=0.1.6 且
   **未组装 `dsh-client-ui-settings`** 的非常规组合，此时只有卡片不出现（§3.4.1）。
+- 会话地址取自 `Agent`：0.2.0 是 `agent.id`，更早是 `agent.session.id`；宿主若再改这个形状，
+  按会话模式会静默退回默认值（不报错），这是本插件最脆弱的一处外部契约（§5.7）。
 - 可发布 npm（`npm publish`）后 `dsh plugin add dsh-approval-mode`。

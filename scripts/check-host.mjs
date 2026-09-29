@@ -2,15 +2,17 @@
 /**
  * check-host.mjs — offline contract check for index.js.
  *
- * The Host half imports "node:fs"/"node:os"/"node:path" plus
- * "@deepseek-ai/schemastery" and "@deepseek-ai/dsh-llm", which this repository
- * deliberately does not install: a plugin must resolve those from the DSH
- * shared layer, never from a private copy. This script registers module hooks
- * that serve both specifiers from in-process stubs, points DSH_HOME at a fresh
- * temporary directory, and exercises the real "index.js" with no node_modules
- * and no running DSH. What that buys is coverage of the parts whose failure is
- * silent in production — and of the two settings generations the plugin has to
- * bridge:
+ * The Host half imports "node:crypto"/"node:fs"/"node:os"/"node:path" plus
+ * "@deepseek-ai/schemastery", which this repository deliberately does not
+ * install: a plugin must resolve host packages from the DSH shared layer, never
+ * from a private copy. This script registers module hooks that serve that
+ * specifier from an in-process stub and REFUSES every "@deepseek-ai/dsh-*"
+ * specifier outright — the manifest must declare no versioned harness package,
+ * and a reintroduced import has to fail here rather than in a user's profile.
+ * It then points DSH_HOME at a fresh temporary directory and exercises the real
+ * "index.js" with no node_modules and no running DSH. What that buys is coverage
+ * of the parts whose failure is silent in production — and of the two settings
+ * generations the plugin has to bridge:
  *
  *   1. the mode vocabulary is the three values the client half offers, and the
  *      plugin config declares the default mode as a live (volatile) field;
@@ -38,7 +40,12 @@
  *      per change, no matter whether this plugin, the legacy document or the
  *      loader's volatile-update reported it;
  *  10. a malformed session store degrades to empty instead of failing the
- *      plugin, and a route write that cannot be persisted answers 500.
+ *      plugin, and a route write that cannot be persisted answers 500;
+ *  11. an agent is addressed by its session on BOTH Agent shapes — DSH 0.2.0's
+ *      own id, and the older `session` object — and a request carrying neither
+ *      resolves to the default instead of throwing;
+ *  12. the injected notice is built in-tree: a fresh identity, frozen, and the
+ *      same shape the host's own message factory produces.
  *
  * It deliberately does not import index.js as a module without the stubs, needs
  * no browser and no dependencies — "npm run check" is its only caller.
@@ -116,13 +123,20 @@ export function createUserMessage(message) {
 `;
 
 const STUBS = new Map([
-  ["@deepseek-ai/schemastery", SCHEMA_STUB],
-  ["@deepseek-ai/dsh-llm", LLM_STUB]
+  ["@deepseek-ai/schemastery", SCHEMA_STUB]
 ]);
+
+/** Harness packages the plugin must not import: their version names the DSH release line. */
+const FORBIDDEN = /^@deepseek-ai\/dsh(?:-|$)/;
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (STUBS.has(specifier)) return { url: "dsh-stub:" + specifier, shortCircuit: true };
+    if (FORBIDDEN.test(specifier)) {
+      throw new Error(
+        "index.js resolved " + specifier + " — this plugin must not depend on a versioned @deepseek-ai/dsh-* package"
+      );
+    }
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
@@ -376,18 +390,31 @@ function assertProducerOwnedSource(message) {
   }
 }
 
-/** A request as approveEscalation() sends it. */
-const escalation = (sessionId) => ({
-  agent: { session: { id: sessionId } },
+/**
+ * A request as the host sends it. DSH 0.2.0 gives an Agent its own id — the
+ * session id; older hosts expose the session object instead. Both are exercised.
+ */
+const escalation = (sessionId, shape = "new") => ({
+  agent: agentOf(sessionId, shape),
   toolName: "write",
   reason: "escalate sandbox to danger-full-access: the report must land outside the workspace"
 });
 /** A request as any other answerer sends it. */
-const ordinary = (sessionId, reason) => ({
-  agent: { session: { id: sessionId } },
+const ordinary = (sessionId, reason, shape = "new") => ({
+  agent: agentOf(sessionId, shape),
   toolName: "read",
   ...(reason === undefined ? {} : { reason })
 });
+
+/** One Agent in the shape the named DSH generation hands the answerer. */
+function agentOf(sessionId, shape) {
+  return shape === "legacy" ? { session: { id: sessionId } } : { id: sessionId };
+}
+
+/** An Agent as `ctx.get("agents").list()` returns it, in the same two shapes. */
+function liveAgent(sessionId, inject, shape = "new") {
+  return { ...agentOf(sessionId, shape), inject };
+}
 
 // ---------------------------------------------------------------------------
 
@@ -403,6 +430,40 @@ console.log("dsh-approval-mode: host contract");
   check(field?.isVolatile === true, "the default mode is a live (volatile) config field");
   check(field?.fallback() === "ask", "the config field defaults to ask");
   check(host.MESSAGE_SOURCE?.kind === host.name, "the injected message source carries the plugin's own producer kind");
+}
+
+// 1a: the notice message is built in-tree — identity, shape and immutability.
+{
+  const content = [{ type: "text", text: "hello" }];
+  const message = host.createUserMessage({ content, source: host.MESSAGE_SOURCE });
+  check(message.role === "user", "the built message is a user-role message");
+  check(typeof message.id === "string" && message.id.length > 0, "the built message carries an identity");
+  check(host.createUserMessage({ content, source: host.MESSAGE_SOURCE }).id !== message.id, "every built message gets a fresh identity");
+  check(deepEqual(message.content, content) && message.source?.kind === host.name, "the built message keeps its content and producer source");
+  check(message.id !== content[0] && Object.isFrozen(message) && Object.isFrozen(message.content) && Object.isFrozen(message.content[0]), "the built message is deep-frozen before publication");
+  const input = { content, source: host.MESSAGE_SOURCE };
+  host.createUserMessage(input);
+  check(input.id === undefined && input.role === undefined, "the caller's input object is not mutated");
+  try {
+    assertProducerOwnedSource(message);
+    check(true, "the built message passes session-format v4 source admission");
+  } catch {
+    check(false, "the built message passes session-format v4 source admission");
+  }
+  const cyclic = { content, source: host.MESSAGE_SOURCE };
+  cyclic.self = cyclic;
+  check(host.deepFreeze(cyclic) === cyclic && Object.isFrozen(cyclic) && Object.isFrozen(cyclic.self), "deepFreeze is cycle-safe");
+  check(host.deepFreeze(null) === null && host.deepFreeze(7) === 7, "deepFreeze passes non-objects through");
+}
+
+// 1b: an agent is addressed by its session on both Agent shapes.
+{
+  check(host.sessionIdOf({ id: "session-1" }) === "session-1", "DSH 0.2.0's Agent carries the session id as its own id");
+  check(host.sessionIdOf({ session: { id: "session-2" } }) === "session-2", "an older Agent's session object is still read");
+  check(host.sessionIdOf({ id: "session-1", session: { id: "session-2" } }) === "session-1", "the agent's own id wins when both are present");
+  check(host.sessionIdOf(undefined) === undefined && host.sessionIdOf(null) === undefined, "a missing agent yields no session");
+  check(host.sessionIdOf({}) === undefined && host.sessionIdOf({ id: "" }) === undefined, "an agent without a usable id yields no session");
+  check(host.sessionIdOf({ session: { id: 7 } }) === undefined, "a non-string session id is not used as an address");
 }
 
 // 2: what counts as an escalation.
@@ -435,6 +496,17 @@ console.log("dsh-approval-mode: host contract");
   check(handed.delegated && handed.outcome === "unavailable", "bypass-except-escalation hands an escalation to the user instead of approving it");
 }
 
+// 3a: a request whose Agent uses the OLDER shape reaches the same session.
+{
+  const ui = boot({ generation: "forms", config: liveRef("ask") });
+  const written = await ui.request({ method: "POST", url: host.ROUTE_PATH + "?session=old", body: JSON.stringify({ mode: "bypass" }) });
+  check(written.status === 200, "a session mode is stored for the legacy-shaped address");
+  check((await ui.ask(ordinary("old", undefined, "legacy"))).outcome === "allowed-once", "an older host's Agent shape resolves that session's mode");
+  check((await ui.ask(ordinary("other", undefined, "legacy"))).delegated, "another legacy-shaped session still follows the default");
+  const headless = await ui.ask({ toolName: "read" });
+  check(headless.delegated, "a request carrying no agent follows the default instead of throwing");
+}
+
 // 4: the 0.1.7+ generation — the regression this check exists for.
 {
   let threw = null;
@@ -456,7 +528,7 @@ console.log("dsh-approval-mode: host contract");
   const live = liveRef("ask");
   const ui = boot({ generation: "forms", config: live });
   const injected = [];
-  ui.agents.push({ session: { id: "one" }, inject: (message) => injected.push({ id: "one", message }) });
+  ui.agents.push(liveAgent("one", (message) => injected.push({ id: "one", message })));
   check((await ui.ask(ordinary("one"))).delegated, "the session starts on the default");
   live.set("bypass");
   ui.emit("loader/volatile-update", [[host.DEFAULT_MODE_FIELD]]);
@@ -598,11 +670,12 @@ console.log("dsh-approval-mode: host contract");
 {
   const ui = boot({ generation: "legacy", section: { defaultMode: "ask" } });
   const injected = [];
-  ui.agents.push({ session: { id: "one" }, inject: (message) => injected.push({ id: "one", message }) });
-  ui.agents.push({ session: { id: "two" }, inject: (message) => injected.push({ id: "two", message }) });
+  ui.agents.push(liveAgent("one", (message) => injected.push({ id: "one", message })));
+  ui.agents.push(liveAgent("two", (message) => injected.push({ id: "two", message })));
   await ui.request({ method: "POST", url: host.ROUTE_PATH + "?session=one", body: JSON.stringify({ mode: "bypass" }) });
   check(injected.length === 1 && injected[0].id === "one", "a per-session change notifies that session only");
   check(injected[0].message?.content?.[0]?.text?.includes("绕过审批"), "the notice states the mode in the user's language");
+  check(typeof injected[0].message?.id === "string" && Object.isFrozen(injected[0].message), "the notice carries a fresh identity and is frozen");
   check(injected.every((entry) => {
     try {
       assertProducerOwnedSource(entry.message);
@@ -621,11 +694,22 @@ console.log("dsh-approval-mode: host contract");
 {
   const ui = boot({ generation: "forms", config: liveRef("ask"), localeEntry: { preference: "en" } });
   const injected = [];
-  ui.agents.push({ session: { id: "one" }, inject: (message) => injected.push({ id: "one", message }) });
+  ui.agents.push(liveAgent("one", (message) => injected.push({ id: "one", message })));
   await ui.request({ method: "POST", body: JSON.stringify({ mode: "bypass" }) });
   check(injected.length === 1, "the route's own default write notifies exactly once (the loader event is not a second notice)");
   check(injected[0].message?.content?.[0]?.text?.includes("bypass approval"), "the notice follows the locale entry's preference on the new generation");
   check(injected[0]?.message?.source?.kind === host.MESSAGE_SOURCE.kind, "the 0.1.7+ notice carries the same producer-owned source");
+}
+{
+  const ui = boot({ generation: "forms", config: liveRef("ask") });
+  const injected = [];
+  ui.agents.push(liveAgent("old", (message) => injected.push({ id: "old", message }), "legacy"));
+  ui.agents.push(liveAgent("new", (message) => injected.push({ id: "new", message })));
+  await ui.request({ method: "POST", body: JSON.stringify({ mode: "bypass" }) });
+  check(
+    injected.length === 2 && injected.every((entry) => entry.id === "old" || entry.id === "new"),
+    "a default change notifies both Agent shapes, each for its own session"
+  );
 }
 
 // 15: the store's home resolution.

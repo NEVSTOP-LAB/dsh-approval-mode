@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Approval Mode",
+    "description": "Default approval, bypass approval, or bypass that still asks before a sandbox escalation, next to the permission selector."
+  }
+}
