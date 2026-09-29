@@ -43,12 +43,18 @@
  * (设置 → 插件 → 插件配置), which edits the default. On 0.1.7+ the settings page
  * draws that card itself, from `Config.defaultMode`; the browser half adds
  * only the picker. See doc/design.md for the full design.
+ *
+ * Dependencies: `@deepseek-ai/schemastery` is the only host package this half
+ * imports. The notification message is built here rather than by importing a
+ * message factory, so no versioned `@deepseek-ai/dsh-*` package is declared or
+ * resolved — the manifest then carries no host-version range that a newer DSH
+ * can fall outside of.
  */
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import z from "@deepseek-ai/schemastery";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 /** Stable Cordis plugin name (also the bundle row id). */
 export const name = "dsh-approval-mode";
@@ -87,6 +93,69 @@ export const NS = "approval-mode";
  * {@link name} so the two cannot drift.
  */
 export const MESSAGE_SOURCE = Object.freeze({ kind: name });
+
+/**
+ * Deep-freeze an object graph in place, cycle-safe.
+ *
+ * A message handed to `agent.inject()` is committed to the session log, so it
+ * is published as an immutable snapshot: every reachable enumerable child is
+ * frozen before the agent can see it. The graph is always plugin-built JSON
+ * (content blocks plus the source tag), so no live object such as an
+ * AbortSignal is reachable from it.
+ * @param value - the value to freeze.
+ * @returns the same value.
+ */
+export function deepFreeze(value) {
+  if (value === null || typeof value !== "object") return value;
+  const seen = new WeakSet();
+  const pending = [value];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (node === null || typeof node !== "object" || seen.has(node)) continue;
+    seen.add(node);
+    Object.freeze(node);
+    for (const key of Object.keys(node)) pending.push(node[key]);
+  }
+  return value;
+}
+
+/**
+ * Build one identified, immutable user-role message.
+ *
+ * The host's own factory (`@deepseek-ai/dsh-llm`) is this shape: a detached
+ * clone carrying a fresh UUID identity, frozen before publication. It is
+ * reproduced here — three lines over `node:crypto` — so the plugin declares and
+ * resolves no versioned harness package: a host-version range in the manifest
+ * is what a newer DSH falls outside of, and the identity rule it encodes
+ * (a stable `id` per durable message) is a session-log property, not a library
+ * one.
+ * @param input - the message content and its producer-owned source tag.
+ * @returns a frozen user message with a fresh identity.
+ */
+export function createUserMessage(input) {
+  return deepFreeze({
+    ...structuredClone(input),
+    id: randomUUID(),
+    role: "user"
+  });
+}
+
+/**
+ * The session an agent belongs to.
+ *
+ * DSH 0.2.0 narrowed `Agent` to its own id (the session id), while older hosts
+ * exposed the session object; both are read so the answerer and the notice
+ * address the same value on either generation.
+ * @param agent - an Agent, or undefined.
+ * @returns the session id, or undefined when the agent carries none.
+ */
+export function sessionIdOf(agent) {
+  if (agent === null || typeof agent !== "object") return undefined;
+  if (typeof agent.id === "string" && agent.id.length > 0) return agent.id;
+  const session = agent.session;
+  if (session !== null && typeof session === "object" && typeof session.id === "string" && session.id.length > 0) return session.id;
+  return undefined;
+}
 
 /** DSH's stock behaviour: every tool call that asks goes to the user. */
 export const ASK = "ask";
@@ -601,14 +670,13 @@ export function apply(ctx, config) {
     for (const agent of agents.list()) {
       try {
         if (!agent || typeof agent.inject !== "function") continue;
-        const sessionId = agent.session ? agent.session.id : undefined;
+        const sessionId = sessionIdOf(agent);
         const mode = sessionModeOf(after, sessionId);
         if (mode === sessionModeOf(before, sessionId)) continue;
-        // Use createUserMessage so the message carries a stable identity (id)
-        // and is frozen first — DSH 0.1.1-rc.2+ validates message identity at
-        // the session seed/load boundary and a raw object would fail resume.
-        // The source must be a producer-owned kind (see MESSAGE_SOURCE): the v3
-        // `{ kind: "plugin" }` wrapper is refused by format v4 at session write.
+        // A message carrying a stable identity (id), frozen before publication,
+        // and a producer-owned source kind — see MESSAGE_SOURCE. The host
+        // validates identity at the session seed/load boundary and the session
+        // format refuses the retired `{ kind: "plugin" }` wrapper at write.
         agent.inject(createUserMessage({
           content: [{ type: "text", text: en
             ? `The approval mode of this session was switched by the user to "${modeSentence(mode, true)}".`
@@ -655,7 +723,7 @@ export function apply(ctx, config) {
    */
   ctx.on("approval/request", async (req, next) => {
     try {
-      const sessionId = req && req.agent && req.agent.session ? req.agent.session.id : undefined;
+      const sessionId = sessionIdOf(req?.agent);
       const stored = sessionModes.get(sessionId);
       // Mirrors sessionModeOf({ defaultMode, sessions }, sessionId) without
       // copying the whole map on every request; the store holds valid modes only.
