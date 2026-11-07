@@ -57,7 +57,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 ```
 
 > [!NOTE]
-> `--profile web` 是默认 profile。桌面版（[DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)）用 `--profile desktop`；其他 profile 把 `web` 换成对应名字即可。
+> `--profile web` 是默认 profile；其他 profile 把 `web` 换成对应名字即可。
 
 > [!NOTE]
 > **版本要求**：DSH `0.1.1-rc.2` 及以上（无上界）；已在 DSH `0.1.5-rc.2`
