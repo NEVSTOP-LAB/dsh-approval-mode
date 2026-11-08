@@ -55,7 +55,7 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 ```
 
 > [!NOTE]
-> `--profile web` is the default profile. Use `--profile desktop` for [DSH Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop); replace `web` with the name of any other profile.
+> `--profile web` is the default profile; replace `web` with the name of any other profile.
 
 > [!NOTE]
 > **Version requirement**: DSH `0.1.1-rc.2` or newer (no upper bound); verified on DSH
