@@ -218,6 +218,10 @@ entry id），服务缺失或认不出时返回 500 `settings-unavailable`，而
 | chevron | `--dsw-alias-label-caption`；点击旋转 180°（0.12s 过渡） |
 | 菜单 | 向上弹出（side: top，`bottom: calc(100% + 6px)`）；`--dsw-alias-bg-overlay` 背景；圆角 10px；菜单项 hover 高亮、选中品牌色 + 对勾 |
 
+**窄容器（手机布局）**：PermissionSelect 在 composer 行窄于 460px 时用容器查询隐藏文字标签
+（`@container (width<=460px)`，条件是 trigger 内有图标）。本插件采用同一条规则与断点，
+窄屏只留图标与箭头，与相邻权限控件保持同宽同形。
+
 **差异点（有意）**：两个绕过模式都使用警告色 `--dsw-alias-state-warn-primary`
 （安全提示）；图标区分三态——默认审批为实心盾牌，提权除外为空心盾牌，
 全部绕过为闪电。
