@@ -171,9 +171,9 @@ README 只复述结论，判定依据是本表。
 
 | 声明 | 范围 | 依据 |
 | --- | --- | --- |
-| `engines.dsh` | `>=0.1.1-rc.2` | 宿主版本下界；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
-| `@deepseek-ai/cordis` | `^4.0.1` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
-| `@deepseek-ai/schemastery` | `^3.18.1` | `Config` schema（`object` / `union` / `dict` / `.volatile()`），遗留一代（DSH <= 0.1.6）的 namespace schema 也用它 |
+| `engines.dsh` | `>=0.1.1-rc.2 <0.3.0-0` | 宿主版本范围：下界是最旧支持的宿主，上界挡掉 0.3 及其预发布；dsh-market 的专用宿主版本声明通道（顶层 `engines.dsh` 优先于 `dsh.engines.dsh`） |
+| `@deepseek-ai/cordis` | `>=4.0.1 <5.0.0-0` | `ctx.on(…, true)` prepend、`ctx.inject`、`ctx.effect` |
+| `@deepseek-ai/schemastery` | `>=3.18.1 <4.0.0-0` | `Config` schema（`object` / `union` / `dict` / `.volatile()`），遗留一代（DSH <= 0.1.6）的 namespace schema 也用它 |
 | `react` | `^18.2.0` | client bundle（宿主 seed 模块提供） |
 
 **不声明任何 `@deepseek-ai/dsh-*` peer**（0.2.0 起）：插件的 Host 半只 import
@@ -187,10 +187,12 @@ README 只复述结论，判定依据是本表。
 settings 服务，且两代契约都兼容——<=0.1.6 的 `register/get/update` 与 0.1.7+（含 0.2.0）的
 `describe/update`（配置表单）。
 
-### 3.2 为什么上界不设（以及 0.1.7 / 0.2.0 的教训）
+### 3.2 上界为什么挡在 0.3.0
 
-caret 只界到 `0.2.0`，不写显式上界：插件只使用**公开服务**——`settings`、`webServer`、
-`approval/request` 水瀑布、slot 座位——不依赖内部符号。
+`engines.dsh` 与各 peer 都写成「下界 + 下一个大版本的上界」（如 `<0.3.0-0`、`<4.0.0-0`），
+上界末尾的 `-0` 让下一大版本的预发布也一并被排除：插件只使用**公开服务**——`settings`、
+`webServer`、`approval/request` 水瀑布、slot 座位——不依赖内部符号，因此同一条大版本线内
+不必逐版本收紧；换大版本线则视为需要重新校验的契约变化。
 
 但 2026-09 的 DSH 0.1.7 说明「公开」不等于「契约不变」：settings 服务被整体换成
 「插件 `Config` + profile patch 配置表单」，`register`/`get` 消失，旧代码在 `apply` 第一行
@@ -205,7 +207,7 @@ DSH 0.2.0 又给出另一条：**声明本身也会过期**。共享包跟着核
 同一版本还有一处只是**取值方式**变了的契约：`Agent` 收窄成 `{ id }`（会话 id），
 不再有 `agent.session`，按会话取模式的代码会静默退回默认值。于是 0.2.0 干脆把这条 peer
 去掉：只用 `node:crypto` + 本地 `deepFreeze` 构造同形消息，会话地址改由 `sessionIdOf`
-兼容两种 Agent 形状，`engines.dsh` 一并改为无上界的 `>=0.1.1-rc.2`。可复用的判据是——
+兼容两种 Agent 形状。可复用的判据是——
 **peer 里只保留真的被 import 的包**，而 `@deepseek-ai/dsh-*` 里每一个都绑定某条 DSH 版本线，
 能不 import 就不 import。
 
@@ -266,7 +268,7 @@ profile 的 `pnpm-workspace.yaml` 设了 `autoInstallPeers: false`，而这些�
 
 ## 4. 兼容性校验怎么做
 
-每次 DSH 大版本更新后，按下面的顺序重新校验，并把结论写回 §3.1 的表和 README 的事实段。
+每次 DSH 大版本更新后，按下面的顺序重新校验，并把结论写回 §3.1 的表和 README 顶部的兼容说明。
 
 1. **逐 API 对照宿主实现**（读代码，不靠记忆）：
 
@@ -363,6 +365,8 @@ npm run pack        # → dist/dsh-approval-mode-<version>.tgz
 ```
 
 - **CI**（`.github/workflows/ci.yml`）：push/PR 到 main 时跑 `npm run check` 与 `npm run pack`。
+- **兼容性**（`.github/workflows/dsh-compat.yml`）：矩阵按 `engines.dsh` 过滤被测 DSH 版本，
+  在 Linux runner 上逐版本装进隔离 profile，校验组合层与入口 import，并跑 `npm run check`。
 - **Release**（`.github/workflows/release.yml`）：推送 `v*` tag 时触发，**先校验
   `package.json` 的 version 与 tag 一致**（不一致直接失败），然后 check、pack、
   用 `scripts/release-notes.mjs` 组装正文、创建 GitHub Release 并附上 `dist/*.tgz`。

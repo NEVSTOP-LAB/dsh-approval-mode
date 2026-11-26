@@ -10,6 +10,13 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **声明覆盖 DSH 0.2.x，并加逐版本装载验证。** `engines.dsh` 改为 `>=0.1.1-rc.2 <0.3.0-0`，
+  `@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery` 的 peer 改为「下界 + 下一个大版本上界」，
+  插件代码不变；新增 `.github/workflows/dsh-compat.yml`，矩阵按 `engines.dsh` 过滤后在 Linux 上
+  逐版本装进隔离 profile 验证；README 中英两版的兼容信息收敛到顶部一处 callout。
+
 ## [0.2.1] - 2026-11-13
 
 ### 修复

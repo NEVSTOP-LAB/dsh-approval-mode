@@ -1,3 +1,6 @@
+> [!NOTE]
+> 兼容 DSH 0.2.x（`engines.dsh` 见 `package.json`）；实测 `0.2.0-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.5`（Linux CI 逐版本装载验证）。
+
 # DSH-Approval-Mode
 
 DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspace Write / Full Access）旁边加一个「审批模式」按钮，权限可以保持 **Workspace Write**，审批模式选「绕过审批（提权除外）」——工具调用自动放行，但文件操作仍被沙箱限制在工作区内，比切到 Full Access 更安全、更方便。
@@ -22,8 +25,8 @@ DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspac
 - 绕过模式下按钮显示为橙色；提权除外用空心盾牌，全部绕过用闪电
 - 权限为 Full Access 时，按钮置灰并显示「绕过审批」：DSH 不再发起审批请求，模式不可切换
 - 切换模式会通知该会话的代理
-- 「设置 → 插件」中有本插件的**默认审批模式**配置项（DSH 0.1.7+ 由宿主按插件 Config
-  自动渲染；更早版本是「插件配置」里的独立卡片），可设置打开会话时使用的默认审批模式
+- 「设置 → 插件」中有本插件的**默认审批模式**配置项（由宿主按插件 Config 自动渲染），
+  可设置打开会话时使用的默认审批模式
 
 ## 配置
 
@@ -32,23 +35,17 @@ DSH 审批模式插件。在 DSH 窗口的权限下拉框（Read Only / Workspac
 | 入口 | 位置 | 作用范围 |
 | --- | --- | --- |
 | 审批模式按钮 | 输入框工具栏，权限下拉框旁边 | **当前会话**：只改这个会话，其他会话不受影响 |
-| 默认审批模式 | 设置 → 插件（0.1.7+）／ 插件配置卡片（0.1.6 及更早） | **默认值**：没有自己模式的会话（含正在运行的）立即跟随；已用按钮单独设过模式的会话不受影响 |
+| 默认审批模式 | 设置 → 插件 | **默认值**：没有自己模式的会话（含正在运行的）立即跟随；已用按钮单独设过模式的会话不受影响 |
 
 工具栏按钮不会改写默认值；默认值只对没有自己模式的会话生效。想改默认就动设置，想单独放行某个会话就动按钮。
 
-存储位置：**默认模式**是本插件的配置项（DSH 0.1.7+ 由宿主写在 profile patch 里）；
+存储位置：**默认模式**是本插件的配置项（由宿主写在 profile patch 里）；
 **按会话的模式**写在 `$DSH_HOME/approval-mode/sessions.json`（插件自有目录，原子写入）。
 两者都立即生效并持久保存。
 
-> [!IMPORTANT]
-> **从 DSH 0.1.6 及更早升级到 0.1.7+ 时**：0.1.7 换掉了旧的 settings 存储通道
-> （`settings.yaml` 会被改名成 `settings.yaml.imported`），旧版本写入的**默认模式**在新宿主上
-> 读不到了，请在「设置 → 插件 → dsh-approval-mode」里重新选一次。按会话的模式由插件首次
-> 启动时自动迁移，无需手动处理。
-
 ## 安装
 
-需要 [dsh CLI](https://github.com/deepseek-ai/deepseek-harness)（下界 `0.1.1-rc.2`，实测 `0.1.5-rc.2`、`0.1.7-rc.1` 与 `0.2.0-rc.1`，见下方版本说明）。
+需要 [dsh CLI](https://github.com/deepseek-ai/deepseek-harness)（兼容范围见 `package.json` 的 `engines.dsh`）。
 
 从 GitHub 仓库安装：
 
@@ -60,14 +57,6 @@ dsh plugin --profile web add github:NEVSTOP-LAB/dsh-approval-mode
 > `--profile web` 是默认 profile；其他 profile 把 `web` 换成对应名字即可。
 
 > [!NOTE]
-> **版本要求**：DSH `0.1.1-rc.2` 及以上（无上界）；已在 DSH `0.1.5-rc.2`
-> （DSH Desktop 2.0.11）、`0.1.7-rc.1`（DSH Desktop 2.0.14）与 `0.2.0-rc.1`
-> （DSH Desktop 2.0.16）上验证。低于 `0.1.1-rc.2` 的宿主会被 dsh-market 标记为
-> 「低于声明下界」，请先升级 DSH。
-> 0.1.7 更换了 settings 服务的契约（插件 Config 取代命名空间），本插件两代都支持；
-> 升级后默认模式需要重设一次，见上文「配置」。
-> 0.2.0 起宿主不再声明任何 `@deepseek-ai/dsh-*` peer：插件不 import 带版本号的宿主包
-> （通知消息在插件内构造），因此 0.2 的 DSH 不会再把本插件判为不兼容。
 > 开发、版本声明的判定依据与兼容性校验方法见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 建议锁定提交，避免后续更新改变实际内容：
