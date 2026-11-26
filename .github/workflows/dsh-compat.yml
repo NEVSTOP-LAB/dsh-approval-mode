@@ -89,7 +89,10 @@ jobs:
           npm pack --pack-destination dist
 
       - name: Install into a DSH profile
-        run: npx -y @deepseek-ai/dsh@${{ matrix.dsh }} plugin --profile compat add "$(ls dist/*.tgz)"
+        # 必须用绝对路径：pnpm 会把不带 ./ 的相对 tarball 路径当成 git 依赖去 ls-remote
+        run: |
+          tarball=$(ls "$PWD"/dist/*.tgz)
+          npx -y @deepseek-ai/dsh@${{ matrix.dsh }} plugin --profile compat add "$tarball"
 
       - name: Compose the profile (bundle patch)
         run: |
