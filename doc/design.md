@@ -355,8 +355,8 @@ dsh-approval-mode/
 
 ### 3.7 版本要求与兼容性
 
-版本要求有两个声明处：`package.json` 的 `engines.dsh`（宿主版本下界）与
-`peerDependencies`（各共享包的可用范围）。每条范围对应的依据、上界为何不设、
+版本要求有两个声明处：`package.json` 的 `engines.dsh`（宿主版本范围）与
+`peerDependencies`（各共享包的可用范围）。每条范围对应的依据、上界为何挡在下一个大版本线、
 peer 为何标 `optional`、以及逐版本校验方法见
 [CONTRIBUTING.md §3–§4](../CONTRIBUTING.md#3-版本要求与兼容性)。
 

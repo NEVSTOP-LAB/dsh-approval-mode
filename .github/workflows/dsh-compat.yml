@@ -1,0 +1,123 @@
+name: dsh-compat
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+# 0.2.x 每个大版本取一个最新非 alpha 版本；prepare 按 package.json 的 engines.dsh 过滤，
+# 只在下界覆盖到的版本上做装载验证。判定口径与 DSH 一致：includePrerelease。
+env:
+  DSH_VERSIONS: 0.2.0-rc.2 0.2.1-rc.5 0.2.2-rc.5
+
+jobs:
+  prepare:
+    name: Resolve matrix
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.range.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: range
+        name: Filter DSH versions by engines.dsh
+        run: |
+          range=$(node -p "require('./package.json').engines.dsh || ''")
+          if [ -z "$range" ]; then
+            echo "package.json 未声明 engines.dsh" >&2
+            exit 1
+          fi
+          echo "engines.dsh: $range"
+          versions=$(npx -y semver@7 -p -r "$range" $DSH_VERSIONS | sort -V | tr '\n' ' ')
+          if [ -z "$versions" ]; then
+            echo "engines.dsh 不覆盖任何被测 0.2.x 版本：$DSH_VERSIONS" >&2
+            exit 1
+          fi
+          echo "versions: $versions"
+          echo "versions=$(printf '%s\n' $versions | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Checks and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 本仓库不提交 lock 文件，setup-node 的 cache: npm 需要 lock 才能算 key，故不启用
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund --ignore-scripts
+      - run: npm run check --if-present
+      - run: npm test --if-present
+
+  compat:
+    name: DSH ${{ matrix.dsh }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: ${{ fromJson(needs.prepare.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      # runner 上下文不能用在 job 级 env，DSH_HOME 在步骤里写进 $GITHUB_ENV
+      - name: Set DSH_HOME
+        run: echo "DSH_HOME=$RUNNER_TEMP/dsh-home" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      # 只缓存包缓存，不缓存 DSH_HOME：profile 里装着本次构建的插件，缓存它会留下旧 tarball
+      - name: Cache DSH packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/pnpm
+          key: dsh-${{ matrix.dsh }}-${{ hashFiles('package.json') }}
+          restore-keys: |
+            dsh-${{ matrix.dsh }}-
+
+      - name: Pack the plugin
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+
+      - name: Install into a DSH profile
+        # 必须用绝对路径：pnpm 会把不带 ./ 的相对 tarball 路径当成 git 依赖去 ls-remote
+        run: |
+          tarball=$(ls "$PWD"/dist/*.tgz)
+          npx -y @deepseek-ai/dsh@${{ matrix.dsh }} plugin --profile compat add "$tarball"
+
+      - name: Compose the profile (bundle patch)
+        run: |
+          npx -y @deepseek-ai/dsh@${{ matrix.dsh }} --profile compat --dump-config | tee composed.yml
+          grep -q "$(node -p "require('./package.json').name")" composed.yml
+
+      # index.js 顶层 import 了插件的宿主 peer（schemastery），隔离 profile 不会自动装它，
+      # 这里按被测 DSH 版本自己的依赖把对应版本装进 profile，再验入口能否加载
+      - name: Provide the host peers the plugin declares
+        run: |
+          npm view @deepseek-ai/dsh@${{ matrix.dsh }} dependencies --json > host-deps.json
+          node -e '
+            const fs = require("fs")
+            const host = JSON.parse(fs.readFileSync("host-deps.json", "utf8"))
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
+            const specs = Object.keys(pkg.peerDependencies || {})
+              .filter((n) => host[n])
+              .map((n) => `${n}@${String(host[n]).replace(/^[~^]/, "")}`)
+            fs.writeFileSync("host-peers.txt", specs.join(" "))
+          '
+          specs=$(cat host-peers.txt)
+          if [ -n "$specs" ]; then (cd "$DSH_HOME/profiles/compat" && pnpm add $specs); fi
+
+      - name: Import the entry from the profile
+        run: |
+          name=$(node -p "require('./package.json').name")
+          cd "$DSH_HOME/profiles/compat"
+          PLUGIN_NAME="$name" node --input-type=module -e "await import(process.env.PLUGIN_NAME)"
