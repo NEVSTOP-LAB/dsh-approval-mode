@@ -31,13 +31,13 @@ jobs:
             exit 1
           fi
           echo "engines.dsh: $range"
-          versions=$(npx -y semver@7 -p -r "$range" $DSH_VERSIONS | sort -V)
+          versions=$(npx -y semver@7 -p -r "$range" $DSH_VERSIONS | sort -V | tr '\n' ' ')
           if [ -z "$versions" ]; then
             echo "engines.dsh 不覆盖任何被测 0.2.x 版本：$DSH_VERSIONS" >&2
             exit 1
           fi
-          echo "versions: $(echo $versions)"
-          echo "versions=$(echo $versions | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+          echo "versions: $versions"
+          echo "versions=$(printf '%s\n' $versions | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
 
   checks:
     name: Checks and tests
